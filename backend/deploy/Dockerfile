@@ -6,7 +6,7 @@
 # platform.
 
 # ---------- builder ----------
-FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS builder
 
 RUN apk add --no-cache git ca-certificates
 
@@ -43,7 +43,9 @@ WORKDIR /app
 
 COPY --from=builder /out/api      /app/api
 COPY --from=builder /out/migrate  /app/migrate
-COPY --from=builder /app/cmd/migration/migrations /app/cmd/migration/migrations
+# migrate reads SQL from "migrations" relative to its CWD (/app); the files
+# live at the module root backend/migrations/.
+COPY --from=builder /app/migrations /app/migrations
 
 USER nonroot:nonroot
 

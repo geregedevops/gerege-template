@@ -4,6 +4,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -82,13 +83,17 @@ func InitializeAppConfig() error {
 	viper.AddConfigPath("/")
 	viper.AllowEmptyEnv(true)
 	viper.AutomaticEnv()
-	err := viper.ReadInConfig()
-	if err != nil {
-		return constants.ErrLoadConfig
+	// .env файл байхгүй байх нь алдаа БИШ — контейнер / 12-factor орчинд
+	// тохиргоог зөвхөн environment-ээс уншина. Зөвхөн жинхэнэ задлан унших
+	// (parse) алдааг л буцаана.
+	if err := viper.ReadInConfig(); err != nil {
+		var notFound viper.ConfigFileNotFoundError
+		if !errors.As(err, &notFound) {
+			return constants.ErrLoadConfig
+		}
 	}
 
-	err = viper.Unmarshal(&AppConfig)
-	if err != nil {
+	if err := viper.Unmarshal(&AppConfig); err != nil {
 		return constants.ErrParseConfig
 	}
 

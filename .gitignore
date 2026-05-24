@@ -7,6 +7,7 @@
 
 # ── Secrets — keep *.example only ─────────────────────────────────
 .env
+backend.env
 .env.*
 !.env.example
 

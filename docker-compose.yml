@@ -1,0 +1,84 @@
+# Full-stack deployment for Gerege Template (backend API + Next.js BFF web,
+# Postgres, Redis). The browser only reaches `web` (behind a reverse proxy);
+# api/db/redis stay on the internal compose network (no public host ports).
+#
+# Secrets:
+#   - ./.env         → compose interpolation (POSTGRES_*, REDIS_PASS) — gitignored
+#   - ./backend.env  → backend config file mounted into api+migrate at /app/.env
+#                      (viper reads a file; see backend.env.example) — gitignored
+#
+# Usage:  docker compose up -d --build
+name: temp-gerege-mn
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--requirepass", "${REDIS_PASS}", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASS}", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # One-off: apply SQL migrations + AutoMigrate, then exit.
+  migrate:
+    build:
+      context: ./backend
+      dockerfile: deploy/Dockerfile
+    entrypoint: ["/app/migrate", "-up"]
+    volumes:
+      - ./backend.env:/app/.env:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: deploy/Dockerfile
+    volumes:
+      - ./backend.env:/app/.env:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./frontend
+    environment:
+      NODE_ENV: production
+      # BFF → backend over the internal network (frontend appends /api/v1).
+      BACKEND_URL: http://api:8080
+      COOKIE_SECURE: "true"
+      APP_ORIGIN: ${APP_ORIGIN}
+    depends_on:
+      - api
+    # Bind to loopback only; the public reverse proxy (nginx) forwards here.
+    ports:
+      - "127.0.0.1:${WEB_PORT:-3006}:3000"
+    restart: unless-stopped
+
+volumes:
+  dbdata:

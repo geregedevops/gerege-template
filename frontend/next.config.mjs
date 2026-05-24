@@ -21,6 +21,9 @@ const CSP = [
 
 const nextConfig = {
   reactStrictMode: true,
+  // Standalone output → slim production Docker image (server.js + minimal
+  // node_modules) instead of shipping the whole tree. See frontend/Dockerfile.
+  output: 'standalone',
   // Security headers applied to every response.
   async headers() {
     const securityHeaders = [
