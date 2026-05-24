@@ -92,7 +92,7 @@ func (uc *usecase) Login(ctx context.Context, req LoginRequest) (resp LoginRespo
 	if lookupErr != nil {
 		// Энэ зам нь бодит нууц үгийн шалгалттай ойролцоо ижил бодит цаг
 		// (wall-clock) зарцуулахын тулд хуурамч (dummy) bcrypt харьцуулалт хийнэ.
-		_ = helpers.ValidateHash(password, dummyBcryptHash)
+		_ = helpers.ValidateHash(password, uc.dummyHash)
 		err = apperror.Unauthorized("invalid email or password")
 		logger.ErrorWithContext(ctx, "Login failed: user lookup error", logger.Fields{
 			"usecase": usecaseName,

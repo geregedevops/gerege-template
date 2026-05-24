@@ -113,7 +113,11 @@ func (m *AuthMiddleware) Handle(c fiber.Ctx) error {
 		}
 	}
 
-	if user.IsAdmin != m.isAdmin && !user.IsAdmin {
+	// Admin шаардлагатай route-д зөвхөн admin зөвшөөрнө; admin биш route-уудад
+	// (m.isAdmin == false) хэн ч (хэрэглэгч ч, admin ч) дамжина. Дэлгэрэнгүй: admin
+	// нь нийтийн / хэрэглэгчийн endpoint-уудыг дандаа дуудаж чаддаг тул хязгаарлах
+	// нэг л чиглэлийг (m.isAdmin && !user.IsAdmin) шалгана.
+	if m.isAdmin && !user.IsAdmin {
 		logger.WarnWithContext(logCtx, "Auth: insufficient privilege", logger.Fields{
 			"middleware":     middlewareName,
 			"file":           fileName,

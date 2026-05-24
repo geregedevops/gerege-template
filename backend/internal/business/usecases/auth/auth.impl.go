@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"golang.org/x/crypto/bcrypt"
 	"templatev27/internal/business/usecases/users"
 	"templatev27/internal/datasources/caches"
 	"templatev27/pkg/jwt"
@@ -24,27 +25,42 @@ type usecase struct {
 	mailer     mailer.OTPMailer
 	redisCache caches.RedisCache
 	cfg        Config
+	// dummyHash нь Login доторх "хэрэглэгч олдсонгүй" болон "буруу нууц үг"
+	// гэсэн салаануудын хоорондох цаг хугацааны зөрүүг далдлахад ашигладаг
+	// урьдчилан тооцоолсон bcrypt hash юм. NewUsecase-д cfg.BcryptCost-оор
+	// нэг удаа бэлдэгддэг тул жинхэнэ нууц үгийн харьцуулалттай ижил cost-той
+	// — ингэснээр enumeration timing зөрөөг (cost-ийн зөрөөнөөс үүдсэн) хаана.
+	dummyHash string
 }
+
+// fallbackDummyHash нь NewUsecase эхлэх агшинд bcrypt алдаа гарвал (зөвхөн
+// устгасан энтропийн эх сурвалжтай үед) ашиглах cost-10 hash. Энэ нь хүчинтэй
+// cost-ын муж дотор хэзээ ч ажиллах ёсгүй; гэхдээ сервер эхлэхийг хаахгүйн
+// тулд static fallback хадгалсан.
+const fallbackDummyHash = "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy"
 
 // NewUsecase нь auth урсгалуудыг холбодог. Энэ нь identity унших / бичихэд
 // users.Usecase-ээс (User bounded-context-ийн оролтын порт), мөн auth-д
 // тусгайлсан хэсгүүдэд дэд бүтцээс (jwt, redis, mailer) хамаардаг.
 func NewUsecase(usersUC users.Usecase, jwtService jwt.JWTService, otpMailer mailer.OTPMailer, redisCache caches.RedisCache, cfg Config) Usecase {
+	cost := cfg.BcryptCost
+	if cost < bcrypt.MinCost || cost > bcrypt.MaxCost {
+		cost = bcrypt.DefaultCost
+	}
+	dummy, err := bcrypt.GenerateFromPassword([]byte("dummy-password-for-timing-mitigation"), cost)
+	dummyHash := fallbackDummyHash
+	if err == nil {
+		dummyHash = string(dummy)
+	}
 	return &usecase{
 		users:      usersUC,
 		jwtService: jwtService,
 		mailer:     otpMailer,
 		redisCache: redisCache,
 		cfg:        cfg,
+		dummyHash:  dummyHash,
 	}
 }
-
-// dummyBcryptHash нь Login доторх "хэрэглэгч олдсонгүй" болон "буруу нууц үг"
-// гэсэн салаануудын хоорондох цаг хугацааны зөрүүг далдлахад ашигладаг урьдчилан
-// тооцоолсон bcrypt hash юм. Үүний эсрэг дурын нууц үг харьцуулах нь бодит
-// bcrypt харьцуулалттай ижил ~100мс зарцуулдаг тул хариуны хоцролтоор дамжсан
-// хэрэглэгчийн тооллогоос (enumeration) сэргийлдэг.
-const dummyBcryptHash = "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy"
 
 // tokenCutoffTTL нь тасалбар (cutoff) дохио хэр удаан амьдрах ёстойг
 // хязгаарладаг. Access токенууд хамгийн ихдээ uc.cfg.JWTExpired цагийн дараа

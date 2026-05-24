@@ -36,7 +36,7 @@ import (
 	"templatev27/pkg/observability"
 )
 
-const serviceName = "go-rest-boilerplate"
+const serviceName = "gerege-template"
 
 type App struct {
 	fiber           *fiber.App
