@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -87,6 +88,9 @@ func TestVerifyOTP(t *testing.T) {
 				// дохио тул rate-limit / сэрэмжлүүлэг нь brute-force загварыг
 				// бичгийн алдаанаас ялгаж чадна.
 				f.redis.On("Incr", mock.Anything, "otp_attempts:patrick@example.com").Return(int64(6), nil).Once()
+				// attempts != 1 тул incrWithExpiry нь TTL байгаа эсэхийг
+				// PTTL-ээр шалгана; эерэг утга буцаавал дахин Expire хийхгүй.
+				f.redis.On("PTTL", mock.Anything, "otp_attempts:patrick@example.com").Return(5*time.Minute, nil).Once()
 			},
 			wantErr:     true,
 			wantErrType: apperror.ErrTypeForbidden,

@@ -95,7 +95,10 @@ func (m *AuthMiddleware) Handle(c fiber.Ctx) error {
 	// бид Redis-ийн түр зуурын саатлаас болж бүх хүнийг түгжихийг хүсэхгүй.
 	if m.redisCache != nil && user.IssuedAt != nil {
 		if cutoffStr, getErr := m.redisCache.Get(logCtx, auth.TokenCutoffKey(user.UserID)); getErr == nil && cutoffStr != "" {
-			if cutoff, parseErr := strconv.ParseInt(cutoffStr, 10, 64); parseErr == nil && user.IssuedAt.Unix() < cutoff {
+			// JWT IssuedAt нь секунд хүртэл бутархайгүй болгогддог тул нууц
+			// үг солихтой яг нэг секундэд олгогдсон токеныг бас татгалзахын
+			// тулд <= ашиглана (хил дээрх секундын цоорхойг хаана).
+			if cutoff, parseErr := strconv.ParseInt(cutoffStr, 10, 64); parseErr == nil && user.IssuedAt.Unix() <= cutoff {
 				logger.WarnWithContext(logCtx, "Auth: token revoked by password rotation", logger.Fields{
 					"middleware": middlewareName,
 					"file":       fileName,

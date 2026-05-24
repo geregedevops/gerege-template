@@ -13,8 +13,11 @@ import (
 	"templatev27/internal/datasources/records"
 	"templatev27/pkg/logger"
 
-	"gorm.io/gorm"
+	"github.com/jackc/pgx/v5/pgconn"
 )
+
+// pgUniqueViolation нь Postgres-ийн unique_violation-ийн SQLSTATE код юм.
+const pgUniqueViolation = "23505"
 
 func (r *postgreUserRepository) Store(ctx context.Context, inDom *domain.User) (domain.User, error) {
 	const (
@@ -40,9 +43,12 @@ func (r *postgreUserRepository) Store(ctx context.Context, inDom *domain.User) (
 		RETURNING id, username, email, password, active, role_id, created_at, updated_at, deleted_at, password_changed_at
 	`, userRecord.Username, userRecord.Email, userRecord.Password, userRecord.RoleId, userRecord.CreatedAt).Scan(&stored).Error
 	if err != nil {
-		// gorm.ErrDuplicatedKey нь драйвер Postgres 23505 unique_violation-г
-		// мэдээлэхэд TranslateError-оор үүсгэгддэг.
-		if errors.Is(err, gorm.ErrDuplicatedKey) {
+		// GORM-ийн Raw().Scan() зам нь TranslateError-г ажиллуулдаггүй тул
+		// gorm.ErrDuplicatedKey хэзээ ч үүсэхгүй. Иймд pgx драйверын буцаасан
+		// *pgconn.PgError-г шууд шалгаж, 23505 unique_violation-г 409 Conflict
+		// болгон буулгана.
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == pgUniqueViolation {
 			logger.ErrorWithContext(ctx, "Failed to insert user: unique violation", logger.Fields{
 				"repository": repositoryName,
 				"method":     funcName,

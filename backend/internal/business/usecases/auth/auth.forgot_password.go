@@ -56,7 +56,7 @@ func (uc *usecase) ForgotPassword(ctx context.Context, req ForgotPasswordRequest
 
 	if uc.cfg.ForgotMaxAttempts > 0 {
 		key := ForgotAttemptsKey(email)
-		attempts, incrErr := uc.redisCache.Incr(ctx, key)
+		attempts, incrErr := uc.incrWithExpiry(ctx, key, uc.cfg.ForgotLockoutTTL, "forgot_attempts")
 		if incrErr != nil {
 			logger.ErrorWithContext(ctx, "ForgotPassword: failed to track attempts (non-fatal)", logger.Fields{
 				"usecase": usecaseName,
@@ -66,8 +66,6 @@ func (uc *usecase) ForgotPassword(ctx context.Context, req ForgotPasswordRequest
 				"error":   incrErr.Error(),
 				"email":   email,
 			})
-		} else if attempts == 1 {
-			_ = uc.redisCache.Expire(ctx, key, uc.cfg.ForgotLockoutTTL)
 		}
 		if attempts > int64(uc.cfg.ForgotMaxAttempts) {
 			err = apperror.Forbidden("too many password reset requests, please try again later")

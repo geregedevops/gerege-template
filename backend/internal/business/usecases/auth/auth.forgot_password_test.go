@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -69,6 +70,9 @@ func TestForgotPassword(t *testing.T) {
 			setup: func(f *fixture) {
 				// Fixture нь ForgotMaxAttempts=3-аар хязгаарладаг; 4 дэх хүсэлт үүнийг өдөөдөг.
 				f.redis.On("Incr", mock.Anything, "forgot_attempts:victim@example.com").Return(int64(4), nil).Once()
+				// attempts != 1 тул incrWithExpiry нь TTL байгаа эсэхийг
+				// PTTL-ээр шалгана; эерэг утга буцаавал дахин Expire хийхгүй.
+				f.redis.On("PTTL", mock.Anything, "forgot_attempts:victim@example.com").Return(15*time.Minute, nil).Once()
 			},
 			wantErr:     true,
 			wantErrType: apperror.ErrTypeForbidden,

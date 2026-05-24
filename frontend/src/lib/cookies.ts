@@ -12,9 +12,15 @@ export const REFRESH_MAX_AGE = 60 * 60 * 24 * 7; // 7 хоног (секундэ
 
 /** Токен cookie-д хэрэглэх стандарт httpOnly сонголтууд. */
 export function cookieOptions(maxAge: number) {
+  // Fail-closed: COOKIE_SECURE заагаагүй бол production-д default-аар Secure
+  // байна. Зөвхөн ил `'false'` өгсөн үед л Secure-гүй болно (жишээ нь дотоод
+  // dev/http орчин). Ингэснээр env буруу бичигдсэн ч prod cookie ил гарахгүй.
+  const secure = process.env.COOKIE_SECURE
+    ? process.env.COOKIE_SECURE === 'true'
+    : process.env.NODE_ENV === 'production';
   return {
     httpOnly: true,
-    secure: process.env.COOKIE_SECURE === 'true',
+    secure,
     sameSite: 'lax' as const,
     path: '/',
     maxAge,

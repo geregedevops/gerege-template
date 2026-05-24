@@ -34,8 +34,11 @@ func TestSendOTP(t *testing.T) {
 				user := activeUser(t)
 				user.Active = false // SendOTP нь зөвхөн идэвхгүй бүртгэлд хүчинтэй
 				f.users.On("GetByEmail", mock.Anything, users.GetByEmailRequest{Email: "patrick@example.com"}).Return(users.GetByEmailResponse{User: user}, nil).Once()
-				f.mailer.On("SendOTP", mock.Anything, mock.AnythingOfType("string"), "patrick@example.com").Return(nil).Once()
+				// Код эхлээд Redis-д хадгалагдаж, OTPTTL-ээр TTL тогтоогдоно;
+				// зөвхөн дараа нь имэйл дараалалд орно (FIX 6 + FIX 7).
 				f.redis.On("Set", mock.Anything, "user_otp:patrick@example.com", mock.AnythingOfType("string")).Return(nil).Once()
+				f.redis.On("Expire", mock.Anything, "user_otp:patrick@example.com", mock.AnythingOfType("time.Duration")).Return(nil).Once()
+				f.mailer.On("SendOTP", mock.Anything, mock.AnythingOfType("string"), "patrick@example.com").Return(nil).Once()
 				f.redis.On("Del", mock.Anything, "otp_attempts:patrick@example.com").Return(nil).Once()
 			},
 		},

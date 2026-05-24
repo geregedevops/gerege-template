@@ -36,8 +36,11 @@ export async function backendFetch<T>(path: string, init?: RequestInit): Promise
     /* хариу JSON биш (жишээ нь 502) — доор статусаар шийднэ */
   }
 
-  if (res.ok && body?.status) {
-    return { ok: true, status: res.status, message: body.message, data: body.data };
+  // 2xx-г амжилттай гэж үзнэ. Хоосон body (204 эсвэл задлагдаагүй JSON →
+  // body=null) бол status талбар шаардахгүй. Зөвхөн дугтуйд `status` boolean
+  // тодорхой байгаа үед л `status:false`-г алдаа гэж тооцно.
+  if (res.ok && (body === null || body.status !== false)) {
+    return { ok: true, status: res.status, message: body?.message, data: body?.data };
   }
 
   const fieldErrors = (body?.data as ValidationData | undefined)?.errors;

@@ -1,5 +1,5 @@
 import { authedFetch } from '@/lib/api';
-import { readJson, toClientResponse } from '@/lib/bff';
+import { readJson, toClientResponse, checkOrigin } from '@/lib/bff';
 
 export const dynamic = 'force-dynamic';
 
@@ -7,6 +7,9 @@ export const dynamic = 'force-dynamic';
 // тал PUT /auth/password/change (JWT шаардана) руу прокси; access токенг
 // cookie-оос авч 401 дээр автоматаар refresh хийнэ.
 export async function POST(req: Request) {
+  const bad = checkOrigin(req);
+  if (bad) return bad;
+
   const { current_password, new_password } = await readJson<{
     current_password?: string; new_password?: string;
   }>(req);

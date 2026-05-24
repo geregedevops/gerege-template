@@ -70,6 +70,52 @@ func (uc *usecase) recordTokenCutoff(ctx context.Context, userID string, when ti
 	_ = uc.redisCache.Expire(ctx, key, tokenCutoffTTL)
 }
 
+// incrWithExpiry нь brute-force/lockout тоологчдыг атомаар нэмэгдүүлж, тэдгээр
+// нь үргэлж дуусах хугацаатай (TTL-тэй) байхыг хангадаг. Анхны Expire алдаа
+// гарвал (жишээ нь Redis-ийн түр зуурын саатал) key мөнхөд TTL-гүй үлдэж,
+// тоологч хэзээ ч reset болохгүй тул хэрэглэгч бүрмөсөн түгжигдэх эрсдэлтэй.
+// Үүнээс сэргийлэхийн тулд:
+//   - attempts == 1 (key шинээр үүссэн) үед TTL тогтооно;
+//   - дараагийн нэмэгдүүлэлт бүрт PTTL-ээр TTL байхгүй (< 0) бол дахин
+//     тогтооно — урьд нь алдаатай эсвэл алдагдсан TTL-г нөхнө.
+//
+// Expire алдааг хэзээ ч чимээгүй залгидаггүй — бүгдийг лог болгож, дараагийн
+// нэмэгдүүлэлт дээр дахин оролдоно. Тоологчид буцах нь зүгээр (зөөлөн
+// бүтэлгүйтэл) тул incr алдаа гарвал зүгээр л буцаана.
+func (uc *usecase) incrWithExpiry(ctx context.Context, key string, ttl time.Duration, step string) (int64, error) {
+	attempts, incrErr := uc.redisCache.Incr(ctx, key)
+	if incrErr != nil {
+		return 0, incrErr
+	}
+
+	needExpire := attempts == 1
+	if !needExpire {
+		// TTL байхгүй (мөнхийн) эсвэл key байхгүй бол дахин тогтооно. PTTL
+		// нь TTL-гүй үед -1, key байхгүй үед -2 (хоёулаа < 0) буцаадаг.
+		if pttl, pttlErr := uc.redisCache.PTTL(ctx, key); pttlErr != nil {
+			logger.ErrorWithContext(ctx, "auth: failed to read counter TTL (non-fatal)", logger.Fields{
+				"step":  step + "_pttl",
+				"error": pttlErr.Error(),
+				"key":   key,
+			})
+		} else if pttl < 0 {
+			needExpire = true
+		}
+	}
+
+	if needExpire {
+		if expErr := uc.redisCache.Expire(ctx, key, ttl); expErr != nil {
+			logger.ErrorWithContext(ctx, "auth: failed to set counter TTL (non-fatal)", logger.Fields{
+				"step":  step + "_expire",
+				"error": expErr.Error(),
+				"key":   key,
+			})
+		}
+	}
+
+	return attempts, nil
+}
+
 // rememberRefresh нь refresh jti-г refresh токены exp-тэй тохирох TTL-тэйгээр
 // Redis-д хадгалдаг. /refresh болон /logout нь эндхийн байхгүй байдлыг
 // "хүчингүй болсон" гэж үздэг бөгөөд энэ нь access токены хар жагсаалтгүйгээр

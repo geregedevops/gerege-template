@@ -1,5 +1,6 @@
 import React from 'react';
 import SigninShell from '@/components/SigninShell';
+import { safeNext } from '@/lib/navigation';
 import LoginForm from './LoginForm';
 
 export const dynamic = 'force-dynamic';
@@ -11,9 +12,7 @@ export default function LoginPage({
 }: {
   searchParams: { next?: string; notice?: string };
 }) {
-  const next = typeof searchParams.next === 'string' && searchParams.next.startsWith('/')
-    ? searchParams.next
-    : '/';
+  const next = safeNext(searchParams.next);
 
   return (
     <SigninShell>

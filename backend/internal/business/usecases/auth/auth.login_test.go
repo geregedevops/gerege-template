@@ -111,6 +111,9 @@ func TestLogin(t *testing.T) {
 				// хэрэглэгчийг хайхаас өмнө ажилладаг тул халдагч email байгаа
 				// эсэхийг ч баталгаажуулж чадахгүй.
 				f.redis.On("Incr", mock.Anything, "login_attempts:victim@example.com").Return(int64(6), nil).Once()
+				// attempts != 1 тул incrWithExpiry нь TTL байгаа эсэхийг
+				// PTTL-ээр шалгана; эерэг утга буцаавал дахин Expire хийхгүй.
+				f.redis.On("PTTL", mock.Anything, "login_attempts:victim@example.com").Return(15*time.Minute, nil).Once()
 			},
 			wantErr:     true,
 			wantErrType: apperror.ErrTypeForbidden,

@@ -7,6 +7,7 @@ import { LogIn } from 'lucide-react';
 import Alert from '@/components/Alert';
 import PasswordField from '@/components/PasswordField';
 import { postJSON } from '@/lib/client';
+import { safeNext } from '@/lib/navigation';
 
 export default function LoginForm({ next, notice }: { next: string; notice?: string }) {
   const router = useRouter();
@@ -34,7 +35,7 @@ export default function LoginForm({ next, notice }: { next: string; notice?: str
     setBusy(false);
 
     if (res.ok) {
-      router.push(next || '/');
+      router.push(safeNext(next));
       router.refresh();
       return;
     }

@@ -62,7 +62,7 @@ func (uc *usecase) Login(ctx context.Context, req LoginRequest) (resp LoginRespo
 	// цонх дуусахад reset болдог.
 	attemptsKey := LoginAttemptsKey(email)
 	if uc.cfg.LoginMaxAttempts > 0 {
-		attempts, incrErr := uc.redisCache.Incr(ctx, attemptsKey)
+		attempts, incrErr := uc.incrWithExpiry(ctx, attemptsKey, uc.cfg.LoginLockoutTTL, "login_attempts")
 		if incrErr != nil {
 			logger.ErrorWithContext(ctx, "Login: failed to track attempts (non-fatal)", logger.Fields{
 				"usecase": usecaseName,
@@ -72,8 +72,6 @@ func (uc *usecase) Login(ctx context.Context, req LoginRequest) (resp LoginRespo
 				"error":   incrErr.Error(),
 				"email":   email,
 			})
-		} else if attempts == 1 {
-			_ = uc.redisCache.Expire(ctx, attemptsKey, uc.cfg.LoginLockoutTTL)
 		}
 		if attempts > int64(uc.cfg.LoginMaxAttempts) {
 			err = apperror.Forbidden("too many failed login attempts, please try again later")

@@ -1,23 +1,51 @@
 /** @type {import('next').NextConfig} */
+
+// Content-Security-Policy: бодит, ажиллах боломжтой бодлого.
+// - script-src: 'self' нь /theme-bootstrap.js (same-origin) болон Next.js-ийн
+//   chunk-уудыг хамарна. 'unsafe-inline' нь Next.js-ийн inline bootstrap
+//   script-уудад (мөн зарим inline) шаардлагатай pragmatic dev default —
+//   production-д nonce руу шилжих нь зохистой.
+// - style-src: апп `style=` inline attribute ашигладаг тул 'unsafe-inline' хэрэгтэй.
+// - connect-src 'self': browser зөвхөн same-origin BFF (/api/*) рүү хандана.
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data:",
+  "font-src 'self' data:",
+  "connect-src 'self'",
+  "frame-ancestors 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+].join('; ');
+
 const nextConfig = {
   reactStrictMode: true,
-  // Security headers applied to every response. The CSP stays strictly 'self'
-  // because next/font self-hosts the fonts at build time (no external hosts),
-  // and the BFF proxies all API traffic — the browser never calls the Go API
-  // cross-origin, so no connect-src exceptions are needed.
+  // Security headers applied to every response.
   async headers() {
+    const securityHeaders = [
+      { key: 'X-Frame-Options', value: 'DENY' },
+      { key: 'X-Content-Type-Options', value: 'nosniff' },
+      { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+      {
+        key: 'Permissions-Policy',
+        value: 'camera=(), microphone=(), geolocation=()',
+      },
+      { key: 'Content-Security-Policy', value: CSP },
+    ];
+
+    // HSTS-ийг зөвхөн production-д илгээнэ — dev дээр http тул HSTS тохиромжгүй.
+    if (process.env.NODE_ENV === 'production') {
+      securityHeaders.push({
+        key: 'Strict-Transport-Security',
+        value: 'max-age=63072000; includeSubDomains',
+      });
+    }
+
     return [
       {
         source: '/:path*',
-        headers: [
-          { key: 'X-Frame-Options', value: 'DENY' },
-          { key: 'X-Content-Type-Options', value: 'nosniff' },
-          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-          {
-            key: 'Permissions-Policy',
-            value: 'camera=(), microphone=(), geolocation=()',
-          },
-        ],
+        headers: securityHeaders,
       },
     ];
   },

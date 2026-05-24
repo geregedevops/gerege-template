@@ -81,7 +81,7 @@ func (uc *usecase) VerifyOTP(ctx context.Context, req VerifyOTPRequest) (err err
 	}
 
 	attemptsKey := OTPAttemptsKey(email)
-	attempts, incrErr := uc.redisCache.Incr(ctx, attemptsKey)
+	attempts, incrErr := uc.incrWithExpiry(ctx, attemptsKey, uc.cfg.OTPTTL, "otp_attempts")
 	if incrErr != nil {
 		logger.ErrorWithContext(ctx, "Verify OTP: failed to track attempts (non-fatal)", logger.Fields{
 			"usecase": usecaseName,
@@ -91,8 +91,6 @@ func (uc *usecase) VerifyOTP(ctx context.Context, req VerifyOTPRequest) (err err
 			"error":   incrErr.Error(),
 			"email":   email,
 		})
-	} else if attempts == 1 {
-		_ = uc.redisCache.Expire(ctx, attemptsKey, uc.cfg.OTPTTL)
 	}
 	if attempts > int64(uc.cfg.OTPMaxAttempts) {
 		err = apperror.Forbidden("too many invalid otp attempts, please request a new code")

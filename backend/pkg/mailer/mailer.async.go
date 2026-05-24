@@ -115,8 +115,23 @@ func (a *AsyncOTPMailer) SendPasswordReset(ctx context.Context, token, receiver 
 	})
 }
 
+// ErrMailerClosed нь Shutdown дуудагдсаны дараа enqueue хийх оролдлогыг
+// илэрхийлнэ. Дараалал руу хаалттай үед бичих нь panic үүсгэх тул дуудагч
+// руу алдаа болгон буцаана.
+var ErrMailerClosed = errors.New("otp mailer is shutting down")
+
 func (a *AsyncOTPMailer) enqueue(j otpJob) error {
+	// Shutdown эхэлсэн эсэхийг эхлээд шалга — дарааллыг хаадаггүй (close нь
+	// send-after-close panic үүсгэдэг) тул оронд нь stop channel-аар хамгаална.
 	select {
+	case <-a.stop:
+		return ErrMailerClosed
+	default:
+	}
+
+	select {
+	case <-a.stop:
+		return ErrMailerClosed
 	case a.queue <- j:
 		return nil
 	default:
@@ -127,11 +142,11 @@ func (a *AsyncOTPMailer) enqueue(j otpJob) error {
 // Shutdown нь worker-уудад дарааллыг гүйцээж дуусгаад гарахыг дохио өгнө. Бүх
 // worker дуусах хүртэл, эсвэл ctx дуусах хүртэл хориглоно (block).
 func (a *AsyncOTPMailer) Shutdown(ctx context.Context) error {
+	// Дарааллыг ХААХГҮЙ — нэгэнт хаасан channel руу enqueue нь panic үүсгэдэг.
+	// Зөвхөн `stop`-г хааж дохио өгнө; worker-ууд дараа нь дарааллын үлдсэн
+	// ажлуудыг гүйцээгээд гарна (доорх worker-ийн drain логикийг үз).
 	a.stopOnce.Do(func() {
 		close(a.stop)
-		// Дарааллыг хаах нь worker-уудыг гүйцээгдсэний дараа буцаахад үнэхээр
-		// нөлөөлдөг; `stop` нь зүгээр л явагдаж буй дахин оролдлогын унтлагыг хурдан гаргана.
-		close(a.queue)
 	})
 
 	done := make(chan struct{})
@@ -150,8 +165,25 @@ func (a *AsyncOTPMailer) Shutdown(ctx context.Context) error {
 
 func (a *AsyncOTPMailer) worker(id int) {
 	defer a.wg.Done()
-	for job := range a.queue {
-		a.deliver(id, job)
+	for {
+		// Хэвийн ажиллагаанд аль аль суваг дээр хүлээнэ. stop хаагдсан үед
+		// ч дарааллыг үргэлжлүүлэн уншиж, явж буй ажлуудыг гүйцээнэ; зөвхөн
+		// дараалал хоосорсон үед л гарна — ингэснээр Shutdown нь дарааллын
+		// ажлуудыг алдахгүй, goroutine leak гарахгүй.
+		select {
+		case job := <-a.queue:
+			a.deliver(id, job)
+		case <-a.stop:
+			// Stop дохио ирлээ — дарааллыг шавхаж дуусаад гар.
+			for {
+				select {
+				case job := <-a.queue:
+					a.deliver(id, job)
+				default:
+					return
+				}
+			}
+		}
 	}
 }
 

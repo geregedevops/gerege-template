@@ -27,6 +27,12 @@ type RedisCache interface {
 	// Get нь key дахь JSON-оор decode хийсэн мөрийг буцаана, эсвэл key
 	// байхгүй үед redis.Nil-г буцаана.
 	Get(ctx context.Context, key string) (string, error)
+	// GetDel нь key дахь JSON-оор decode хийсэн мөрийг буцаахын зэрэгцээ
+	// тэр key-г атомаар устгана (Redis GETDEL). Нэг удаагийн токеныг (жишээ
+	// нь refresh jti) уншиж-устгахдаа атомаар хийснээр TOCTOU-гийн улмаас
+	// зэрэгцээ хоёр хүсэлт нэгэн зэрэг амжилттай болохоос сэргийлнэ. Key
+	// байхгүй үед redis.Nil-г буцаана.
+	GetDel(ctx context.Context, key string) (string, error)
 	// Del нь key-г устгана. Байхгүй key нь алдаа биш.
 	Del(ctx context.Context, key string) error
 	// Incr нь key дахь бүхэл тоог атомаар нэгээр нэмэгдүүлж (байхгүй бол
@@ -35,6 +41,11 @@ type RedisCache interface {
 	// Expire нь key дээрх TTL-г (дахин) тогтооно. otp_attempts зэрэг
 	// тоологчдыг тогтсон цонхонд хязгаарлахад ашиглагдана.
 	Expire(ctx context.Context, key string, ttl time.Duration) error
+	// PTTL нь key-ийн үлдсэн амьдрах хугацааг миллисекундын нарийвчлалтай
+	// буцаана. Key байхгүй бол -2, TTL-гүй (мөнхийн) бол -1-ийг буцаана.
+	// Тоологчийн TTL алдагдсан эсэхийг шалгаж, дахин Expire тогтооход
+	// ашиглагдана.
+	PTTL(ctx context.Context, key string) (time.Duration, error)
 	// Close нь үндсэн холболтын pool-г зогсооно.
 	Close() error
 	// Client нь энэ interface-ээр гаргаагүй командууд (эрүүл мэндийн
@@ -109,6 +120,21 @@ func (cache *redisCache) Get(ctx context.Context, key string) (string, error) {
 	return decoded, nil
 }
 
+func (cache *redisCache) GetDel(ctx context.Context, key string) (string, error) {
+	ctx, cancel := withTimeout(ctx)
+	defer cancel()
+	val, err := cache.client.GetDel(ctx, key).Result()
+	if err != nil {
+		return "", err
+	}
+
+	var decoded string
+	if err := json.Unmarshal([]byte(val), &decoded); err != nil {
+		return "", err
+	}
+	return decoded, nil
+}
+
 func (cache *redisCache) Del(ctx context.Context, key string) error {
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
@@ -125,6 +151,12 @@ func (cache *redisCache) Expire(ctx context.Context, key string, ttl time.Durati
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
 	return cache.client.Expire(ctx, key, ttl).Err()
+}
+
+func (cache *redisCache) PTTL(ctx context.Context, key string) (time.Duration, error) {
+	ctx, cancel := withTimeout(ctx)
+	defer cancel()
+	return cache.client.PTTL(ctx, key).Result()
 }
 
 func (cache *redisCache) Close() error {
