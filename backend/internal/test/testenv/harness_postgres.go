@@ -45,7 +45,7 @@ func StartPostgresEmpty(t *testing.T) *gorm.DB {
 }
 
 // StartPostgres нь устгагдах Postgres контейнер асааж,
-// cmd/migration/migrations дахь бүх .up.sql migration-г лексикографийн
+// migrations/ дахь бүх .up.sql migration-г лексикографийн
 // дарааллаар хэрэгжүүлж, холбогдсон *gorm.DB-г буцаана. Контейнерийг
 // t.Cleanup зогсоодог тул тест бүр цэвэр эхлэл авдаг; ижил package дахь
 // тестүүдийн хооронд юу ч алддаггүй.
@@ -162,14 +162,14 @@ func migrationsDir() string {
 	dir := filepath.Dir(file)
 	for {
 		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return filepath.Join(dir, "cmd", "migration", "migrations")
+			return filepath.Join(dir, "migrations")
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
 			// go.mod олохгүйгээр файлын системийн үндэст хүрсэн —
 			// буруу директорыг чимээгүй сонгохын оронд доош чанга
 			// бүтэлгүйтэх замыг буцаа.
-			return filepath.Join("cmd", "migration", "migrations")
+			return filepath.Join("migrations")
 		}
 		dir = parent
 	}

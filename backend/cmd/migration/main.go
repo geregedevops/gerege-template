@@ -14,7 +14,9 @@ import (
 	"templatev27/pkg/logger"
 )
 
-const migrationsDir = "cmd/migration/migrations"
+// migrationsDir нь модулийн root-оос харьцангуй (make mig-up нь backend/-ээс
+// ажилладаг). SQL файлууд нь конвенцийн дагуу backend/migrations/-д байрлана.
+const migrationsDir = "migrations"
 
 var (
 	up   bool
