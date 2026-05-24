@@ -1,0 +1,22 @@
+Gerege Template Version 27.0
+============================
+
+Co-developed by / Хамтран бүтээсэн:
+  - Gerege Systems Development Team
+  - Claude AI (Anthropic)
+
+2026
+
+Derived from open-source work / Нээлттэй эх дээр суурилсан:
+  - snykk/go-rest-boilerplate — Moh. Najib Fikri (MIT)
+      https://github.com/snykk/go-rest-boilerplate
+      Base architecture, JWT/OTP auth, mailer, audit, cache, observability, tests.
+  - rachmanzz/fiber-starter — rachmanzz (MIT)
+      https://github.com/rachmanzz/fiber-starter
+      Fiber v3 idiom reference.
+
+Changes from upstream / Эх төслөөс хийсэн өөрчлөлт:
+  - HTTP layer: Gin -> Fiber v3
+  - Data layer: sqlx -> GORM
+
+This project is licensed under the MIT License (see LICENSE).

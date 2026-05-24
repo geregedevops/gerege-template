@@ -136,6 +136,14 @@ func InitializeAppConfig() error {
 		if _, err := url.Parse(AppConfig.DBPostgreURL); err != nil {
 			return fmt.Errorf("DB_POSTGRE_URL is not a valid URL: %w", err)
 		}
+		// secure_system_guide §3.5: production-д DB холболт заавал
+		// баталгаажсан TLS-тэй байх ёстой. sslmode=verify-full нь server
+		// сертификатыг CA + hostname-ээр шалгаж MITM-аас хамгаална;
+		// disable/require/allow/prefer нь сертификатыг шалгахгүй тул
+		// production-д хориглоно. (Дотоод сүлжээнд verify-ca-г зөвшөөрнө.)
+		if mode := sslModeOf(AppConfig.DBPostgreURL); mode != "verify-full" && mode != "verify-ca" {
+			return fmt.Errorf("production DB_POSTGRE_URL must use sslmode=verify-full (got %q) — secure_system_guide §3.5", mode)
+		}
 		if AppConfig.AllowedOrigins == "" {
 			return fmt.Errorf("ALLOWED_ORIGINS must be set in production (comma-separated origins)")
 		}
@@ -144,6 +152,23 @@ func InitializeAppConfig() error {
 	}
 
 	return nil
+}
+
+// sslModeOf нь Postgres холболтын мөрөөс sslmode утгыг гаргана —
+// URL хэлбэр (postgres://...?sslmode=verify-full) болон keyword/DSN
+// хэлбэр (host=... sslmode=verify-full) хоёуланг дэмжинэ. sslmode
+// байхгүй бол "" буцаана (libpq нь баталгаажуулдаггүй "prefer"-ийг
+// өгөгдмөлөөр авах тул production guard үүнийг найдваргүйд тооцно).
+func sslModeOf(conn string) string {
+	if u, err := url.Parse(conn); err == nil && (u.Scheme == "postgres" || u.Scheme == "postgresql") {
+		return strings.ToLower(strings.TrimSpace(u.Query().Get("sslmode")))
+	}
+	for _, field := range strings.Fields(conn) {
+		if k, v, ok := strings.Cut(field, "="); ok && strings.EqualFold(strings.TrimSpace(k), "sslmode") {
+			return strings.ToLower(strings.TrimSpace(v))
+		}
+	}
+	return ""
 }
 
 // applyDefaults нь сонголттой config утгуудад зохистой анхдагч утгуудыг олгоно.

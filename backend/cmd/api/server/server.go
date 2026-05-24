@@ -16,11 +16,10 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/adaptor"
-	"github.com/gofiber/swagger"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/time/rate"
 	"gorm.io/gorm"
-	_ "templatev27/docs" // swagger тодорхойлолт, swaggo-оор init үед бүртгэгддэг
+	docs "templatev27/docs" // swagger тодорхойлолт, swaggo-оор init үед бүртгэгддэг
 	"templatev27/internal/business/usecases/auth"
 	"templatev27/internal/business/usecases/users"
 	"templatev27/internal/config"
@@ -117,11 +116,16 @@ func NewApp() (*App, error) {
 	// /metrics — Prometheus exposition. promhttp нь net/http handler бөгөөд
 	// adaptor middleware-ээр дамжуулан Fiber руу холбогддог.
 	app.Get("/metrics", adaptor.HTTPHandler(promhttp.Handler()))
-	// Swagger UI — тодорхойлолтыг `make swag` нь godoc annotation-уудаас
-	// үүсгэдэг (тэр нь `swag init -g cmd/api/main.go`-г ажиллуулна). Дээрх
-	// _ "templatev27/docs" import нь тодорхойлолтыг init үед бүртгэдэг тул
-	// энэ route нь зүгээр л Fiber swagger handler-ээр түүнийг үйлчилнэ.
-	app.Get("/swagger/*", swagger.HandlerDefault)
+	// OpenAPI тодорхойлолт — `make swag` нь godoc annotation-уудаас docs/
+	// багцыг үүсгэдэг. gofiber/swagger нь Fiber v2-д зориулагдсан тул
+	// (handler нь *fiber.Ctx авдаг) Fiber v3-д runtime panic үүсгэдэг —
+	// иймд spec-ийг Fiber v3 native-аар JSON хэлбэрээр үйлчилнэ. Уг JSON-ыг
+	// Swagger UI / Postman / VS Code-д шууд ачаалж болно. (Суулгасан
+	// интерактив UI хэрэгтэй бол Fiber v3-тэй нийцэх swagger handler нэмнэ.)
+	app.Get("/swagger/doc.json", func(c fiber.Ctx) error {
+		c.Set("Content-Type", "application/json")
+		return c.SendString(docs.SwaggerInfo.ReadDoc())
+	})
 
 	// Хязгаарлагдсан контекстуудыг (bounded context) угсарна. Users нь
 	// identity CRUD-г эзэмшиж, Auth нь credential / session урсгалыг эзэмшинэ;
@@ -251,6 +255,10 @@ func setupRouter() *fiber.App {
 	app.Use(middlewares.CORSMiddleware())
 	app.Use(middlewares.BodySizeLimitMiddleware(middlewares.DefaultBodyMaxBytes))
 	app.Use(middlewares.AccessLogMiddleware())
+	// Хүсэлт бүрт deadline — гацсан handler/query холболтыг хэт удаан
+	// эзлэхээс сэргийлнэ (secure_system_guide §5.3). tracing/request-id-ийн
+	// дараа байрлуулсан тул context-ийн утгууд хадгалагдана.
+	app.Use(middlewares.TimeoutMiddleware(middlewares.DefaultRequestTimeout))
 
 	return app
 }

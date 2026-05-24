@@ -36,6 +36,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html
       lang="mn"
       className={`${inter.variable} ${interBody.variable} ${jbMono.variable}`}
+      // theme-bootstrap.js нь hydration-аас өмнө <html>-д data-theme-pref
+      // тавьдаг тул server/client attribute зөрүүгийн warning-ийг дарна.
+      suppressHydrationWarning
     >
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />

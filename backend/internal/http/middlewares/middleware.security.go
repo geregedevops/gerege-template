@@ -35,6 +35,15 @@ func SecurityHeadersMiddleware() fiber.Handler {
 		// API гадаргуу хэзээ ч хэрэглэх ёсгүй хүчирхэг API-уудыг (camera,
 		// geolocation, г.м.) хамардаг.
 		c.Set("Permissions-Policy", "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()")
+		// Cross-origin isolation header-ууд (secure_system_guide §4.6/4.7).
+		// COOP нь browsing-context-ийн opener-ийг тусгаарлаж Spectre маягийн
+		// side-channel-аас хамгаална; CORP нь хариуг өөр site-аас no-cors-оор
+		// embed хийхээс хаана (CORS fetch-д нөлөөлөхгүй тул frontend гэмтэхгүй);
+		// COEP нь document-д хамаарах тул JSON хариунд бараг идэвхгүй ч
+		// гарын авлагын багцыг бүрэн биелүүлэхээр тогтоов.
+		c.Set("Cross-Origin-Opener-Policy", "same-origin")
+		c.Set("Cross-Origin-Resource-Policy", "same-site")
+		c.Set("Cross-Origin-Embedder-Policy", "require-corp")
 		if isProduction {
 			// HSTS зөвхөн production-д — http://localhost дээрх dev
 			// сервер-ээс илгээх нь browser-т тухайн host-д энгийн HTTP-г
