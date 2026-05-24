@@ -1,0 +1,33 @@
+# ── Monorepo scope ────────────────────────────────────────────────
+# Only backend/ and frontend/ are part of this repo. Everything else
+# in the working folder is reference/old material and is excluded.
+/backend-old/
+/me.gerege.mn/
+/secure_system_guide_mn.md
+
+# ── Secrets — keep *.example only ─────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ── Dependencies / build artifacts ───────────────────────────────
+node_modules/
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+
+# ── Go build / cache ──────────────────────────────────────────────
+bin/
+tmp/
+.cache/
+vendor/
+coverage.out
+coverage.html
+*.log
+
+# ── OS / editor ───────────────────────────────────────────────────
+.DS_Store
+.idea/
+.vscode/

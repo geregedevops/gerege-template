@@ -1,0 +1,23 @@
+Gerege Template Version 27.0
+Co-developed by the Gerege Systems Development Team and Claude AI, 2026.
+Gerege Systems Development Team болон Claude AI хамтран бүтээв, 2026.
+
+This product is a derivative work and includes / builds upon the following
+open-source software:
+
+  snykk/go-rest-boilerplate
+  Copyright (c) 2023 Moh. Najib Fikri
+  Licensed under the MIT License.
+  https://github.com/snykk/go-rest-boilerplate
+
+  rachmanzz/fiber-starter (Fiber v3 idiom reference)
+  Licensed under the MIT License.
+  https://github.com/rachmanzz/fiber-starter
+
+Changes from upstream:
+  - HTTP layer ported Gin -> Fiber v3
+  - Data layer ported sqlx -> GORM
+  - All other functionality reproduced faithfully
+
+This product is itself licensed under the MIT License. See the LICENSE file
+for the full text and retained upstream copyright notices.
