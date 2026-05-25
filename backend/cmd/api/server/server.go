@@ -236,7 +236,7 @@ func (a *App) Run() (err error) {
 // стекийн доош ялгарах span-ууд (DB, Redis) автоматаар серверийн span-ийн
 // дэд (child) болдог.
 func setupRouter() *fiber.App {
-	app := fiber.New(fiber.Config{
+	fiberCfg := fiber.Config{
 		// Framework түвшний body-ийн дээд хязгаар — хамгаалалтын эхний шугам.
 		// Route тус бүрийн илүү чанга хязгаарыг BodySizeLimitMiddleware-ээр тавина.
 		BodyLimit: int(middlewares.DefaultBodyMaxBytes),
@@ -246,7 +246,21 @@ func setupRouter() *fiber.App {
 		ErrorHandler: func(c fiber.Ctx, err error) error {
 			return V1Handler.RespondWithError(c, err)
 		},
-	})
+	}
+	// Reverse proxy ард байх үед (nginx, ALB, Cloudflare г.м.) X-Forwarded-For-ийг
+	// итгэлтэйгээр уншихын тулд TRUSTED_PROXIES-ийг тохируул. Тохиргоогүй үед
+	// Fiber нь спуфинг хийсэн толгойг үл тоомсорлоод TCP peer-ийн IP-г буцаана —
+	// энэ нь dev-д зөв (proxy байхгүй), харин production-д хууль ёсны клиентүүд
+	// бүгд proxy-ийн ганц IP харагдах тул rate limit / audit / access log
+	// эвдэрнэ. Operator оруулсан үед EnableIPValidation ороод header утга нь
+	// үнэхээр IP байгаа эсэхийг шалгана.
+	if proxies := config.AppConfig.TrustedProxiesList(); len(proxies) > 0 {
+		fiberCfg.TrustProxy = true
+		fiberCfg.TrustProxyConfig = fiber.TrustProxyConfig{Proxies: proxies}
+		fiberCfg.ProxyHeader = fiber.HeaderXForwardedFor
+		fiberCfg.EnableIPValidation = true
+	}
+	app := fiber.New(fiberCfg)
 
 	app.Use(middlewares.TracingMiddleware(serviceName))
 	app.Use(middlewares.RequestIDMiddleware())

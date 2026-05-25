@@ -33,14 +33,10 @@ func TestForgotPassword(t *testing.T) {
 				f.redis.On("Expire", mock.Anything, "forgot_attempts:patrick@example.com", mock.AnythingOfType("time.Duration")).Return(nil).Once()
 				f.users.On("GetByEmail", mock.Anything, users.GetByEmailRequest{Email: "patrick@example.com"}).Return(users.GetByEmailResponse{User: activeUser(t)}, nil).Once()
 				f.redis.On("Get", mock.Anything, "pwd_reset_user:user-1").Return("", nil).Once()
-				f.redis.On("Set", mock.Anything, mock.MatchedBy(func(k string) bool {
+				f.redis.On("SetWithTTL", mock.Anything, mock.MatchedBy(func(k string) bool {
 					return len(k) > len("pwd_reset:") && k[:len("pwd_reset:")] == "pwd_reset:"
-				}), "user-1").Return(nil).Once()
-				f.redis.On("Expire", mock.Anything, mock.MatchedBy(func(k string) bool {
-					return len(k) > len("pwd_reset:") && k[:len("pwd_reset:")] == "pwd_reset:"
-				}), mock.AnythingOfType("time.Duration")).Return(nil).Once()
-				f.redis.On("Set", mock.Anything, "pwd_reset_user:user-1", mock.AnythingOfType("string")).Return(nil).Once()
-				f.redis.On("Expire", mock.Anything, "pwd_reset_user:user-1", mock.AnythingOfType("time.Duration")).Return(nil).Once()
+				}), "user-1", mock.AnythingOfType("time.Duration")).Return(nil).Once()
+				f.redis.On("SetWithTTL", mock.Anything, "pwd_reset_user:user-1", mock.AnythingOfType("string"), mock.AnythingOfType("time.Duration")).Return(nil).Once()
 				f.mailer.On("SendPasswordReset", mock.Anything, mock.AnythingOfType("string"), "patrick@example.com").Return(nil).Once()
 			},
 		},
@@ -53,12 +49,9 @@ func TestForgotPassword(t *testing.T) {
 				f.redis.On("Expire", mock.Anything, "forgot_attempts:ghost@example.com", mock.AnythingOfType("time.Duration")).Return(nil).Once()
 				f.users.On("GetByEmail", mock.Anything, users.GetByEmailRequest{Email: "ghost@example.com"}).
 					Return(users.GetByEmailResponse{}, apperror.NotFound("email not found")).Once()
-				f.redis.On("Set", mock.Anything, mock.MatchedBy(func(k string) bool {
+				f.redis.On("SetWithTTL", mock.Anything, mock.MatchedBy(func(k string) bool {
 					return len(k) > len("pwd_reset:") && k[:len("pwd_reset:")] == "pwd_reset:"
-				}), "decoy").Return(nil).Once()
-				f.redis.On("Expire", mock.Anything, mock.MatchedBy(func(k string) bool {
-					return len(k) > len("pwd_reset:") && k[:len("pwd_reset:")] == "pwd_reset:"
-				}), mock.AnythingOfType("time.Duration")).Return(nil).Once()
+				}), "decoy", mock.AnythingOfType("time.Duration")).Return(nil).Once()
 				f.redis.On("Del", mock.Anything, mock.MatchedBy(func(k string) bool {
 					return len(k) > len("pwd_reset:") && k[:len("pwd_reset:")] == "pwd_reset:"
 				})).Return(nil).Once()

@@ -90,14 +90,14 @@ func (uc *usecase) SendOTP(ctx context.Context, req SendOTPRequest) (err error) 
 		return err
 	}
 
-	// Кодыг ЭХЛЭЭД Redis-д (тохиргоотой OTPTTL-тэйгээр) хадгална, дараа нь
-	// имэйлийг дараалалд оруулна. Урьд нь имэйлийг эхэлж дараалалд оруулдаг
-	// байсан тул Redis Set амжилтгүй болоход (non-fatal, логлогддог)
-	// хэрэглэгчид баталгаажуулах боломжгүй код хүрдэг байв. Код хадгалагдаж
-	// чадахгүй бол имэйл огт явуулахгүй (баталгаажих боломжгүй кодыг
-	// илгээхгүйн тулд).
+	// Кодыг ЭХЛЭЭД Redis-д тохируулсан OTPTTL-тэйгээр атомар хадгална
+	// (SET ... EX <ttl>), дараа нь имэйлийг дараалалд оруулна. Set + Expire-ийн
+	// 2 алхамтай хослос ялгаатай нь Expire алдах race гарахгүй — TTL заасан
+	// утгаар нь л суух эсвэл огт суухгүй. Урьд нь имэйлийг эхэлж дараалалд
+	// оруулдаг байсан тул Redis амжилтгүй болоход (non-fatal, логлогддог)
+	// хэрэглэгчид баталгаажуулах боломжгүй код хүрдэг байв.
 	otpKey := UserOTPKey(email)
-	if cacheErr := uc.redisCache.Set(ctx, otpKey, code); cacheErr != nil {
+	if cacheErr := uc.redisCache.SetWithTTL(ctx, otpKey, code, uc.cfg.OTPTTL); cacheErr != nil {
 		observability.ObserveCacheOp("redis", "set", "error")
 		err = apperror.InternalCause(fmt.Errorf("persist otp: %w", cacheErr))
 		logger.ErrorWithContext(ctx, "Send OTP failed: persist OTP code error", logger.Fields{
@@ -111,19 +111,6 @@ func (uc *usecase) SendOTP(ctx context.Context, req SendOTPRequest) (err error) 
 		return err
 	}
 	observability.ObserveCacheOp("redis", "set", "ok")
-	// Set() нь кэшийн нийтлэг өгөгдмөл TTL-г хэрэглэдэг; OTP-ийн амьдрах
-	// хугацааг оролдлогын тоологчтой (OTPAttemptsKey) тааруулахын тулд
-	// тохируулсан OTPTTL-г тодорхой override хийнэ.
-	if expireErr := uc.redisCache.Expire(ctx, otpKey, uc.cfg.OTPTTL); expireErr != nil {
-		logger.ErrorWithContext(ctx, "Send OTP: failed to set TTL on OTP code (non-fatal)", logger.Fields{
-			"usecase": usecaseName,
-			"method":  funcName,
-			"file":    fileName,
-			"step":    "redis_expire_otp",
-			"error":   expireErr.Error(),
-			"email":   email,
-		})
-	}
 
 	if mailErr := uc.mailer.SendOTP(ctx, code, email); mailErr != nil {
 		observability.ObserveMailerOp("queue_full")

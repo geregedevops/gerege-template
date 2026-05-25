@@ -107,8 +107,7 @@ func (uc *usecase) ForgotPassword(ctx context.Context, req ForgotPasswordRequest
 			// email-уудтай ойролцоо ижил цаг зарцуулахын тулд адил
 			// хэлбэрийн Redis бичилт хийнэ.
 			decoyKey := PasswordResetKey(token)
-			_ = uc.redisCache.Set(ctx, decoyKey, "decoy")
-			_ = uc.redisCache.Expire(ctx, decoyKey, uc.cfg.PasswordResetTTL)
+			_ = uc.redisCache.SetWithTTL(ctx, decoyKey, "decoy", uc.cfg.PasswordResetTTL)
 			_ = uc.redisCache.Del(ctx, decoyKey)
 			return nil
 		}
@@ -132,7 +131,12 @@ func (uc *usecase) ForgotPassword(ctx context.Context, req ForgotPasswordRequest
 		_ = uc.redisCache.Del(ctx, PasswordResetKey(prior))
 	}
 
-	if setErr := uc.redisCache.Set(ctx, PasswordResetKey(token), user.ID); setErr != nil {
+	// Атомар SET ... EX <PasswordResetTTL> — Set + Expire-ийн оронд. Урьд нь
+	// Set нь кэшийн өгөгдмөл TTL-ийг (REDISExpired минут, ихэвчлэн 5)
+	// хэрэглэдэг, дараа нь Expire-ээр 30 мин болгож сунгадаг байсан; Expire
+	// алдахад (логдсон "non-fatal") token нь 5 минутад л дуусдаг тул и-мэйл
+	// очих хугацааг хүлээж амжихгүй байсан. Атомар SET-ээр энэ цонх хаагдсан.
+	if setErr := uc.redisCache.SetWithTTL(ctx, PasswordResetKey(token), user.ID, uc.cfg.PasswordResetTTL); setErr != nil {
 		err = apperror.InternalCause(fmt.Errorf("persist reset token: %w", setErr))
 		logger.ErrorWithContext(ctx, "Forgot password failed: persist token error", logger.Fields{
 			"usecase": usecaseName,
@@ -144,16 +148,7 @@ func (uc *usecase) ForgotPassword(ctx context.Context, req ForgotPasswordRequest
 		})
 		return err
 	}
-	if expireErr := uc.redisCache.Expire(ctx, PasswordResetKey(token), uc.cfg.PasswordResetTTL); expireErr != nil {
-		logger.ErrorWithContext(ctx, "Forgot password: failed to set TTL on reset token (non-fatal)", logger.Fields{
-			"usecase": usecaseName,
-			"method":  funcName,
-			"file":    fileName,
-			"step":    "redis_expire_reset_token",
-			"error":   expireErr.Error(),
-		})
-	}
-	if setIdxErr := uc.redisCache.Set(ctx, UserResetIndexKey(user.ID), token); setIdxErr != nil {
+	if setIdxErr := uc.redisCache.SetWithTTL(ctx, UserResetIndexKey(user.ID), token, uc.cfg.PasswordResetTTL); setIdxErr != nil {
 		logger.ErrorWithContext(ctx, "Forgot password: failed to update user reset index (non-fatal)", logger.Fields{
 			"usecase": usecaseName,
 			"method":  funcName,
@@ -162,8 +157,6 @@ func (uc *usecase) ForgotPassword(ctx context.Context, req ForgotPasswordRequest
 			"error":   setIdxErr.Error(),
 			"user_id": user.ID,
 		})
-	} else {
-		_ = uc.redisCache.Expire(ctx, UserResetIndexKey(user.ID), uc.cfg.PasswordResetTTL)
 	}
 
 	if mailErr := uc.mailer.SendPasswordReset(ctx, token, email); mailErr != nil {

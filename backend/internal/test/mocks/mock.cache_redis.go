@@ -106,6 +106,20 @@ func (_m *RedisCache) Set(ctx context.Context, key string, value interface{}) er
 	return r0
 }
 
+// SetWithTTL provides a mock function with given fields: ctx, key, value, ttl
+func (_m *RedisCache) SetWithTTL(ctx context.Context, key string, value interface{}, ttl time.Duration) error {
+	ret := _m.Called(ctx, key, value, ttl)
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, interface{}, time.Duration) error); ok {
+		r0 = rf(ctx, key, value, ttl)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
 // Incr provides a mock function with given fields: ctx, key
 func (_m *RedisCache) Incr(ctx context.Context, key string) (int64, error) {
 	ret := _m.Called(ctx, key)
