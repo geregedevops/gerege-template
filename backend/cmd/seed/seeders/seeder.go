@@ -9,6 +9,7 @@ import (
 
 	"templatev27/internal/constants"
 	"templatev27/internal/datasources/records"
+	"templatev27/internal/datasources/rls"
 	"templatev27/pkg/logger"
 
 	"gorm.io/gorm"
@@ -37,6 +38,15 @@ func (s *seeder) UserSeeder(userData []records.Users) (err error) {
 	// Id-г INSERT-ээс хассан тул Postgres түүнийг uuid_generate_v4() баганы
 	// анхдагч утгаар (migration-ууд бэлдсэн) дүүргэнэ.
 	err = s.db.Transaction(func(tx *gorm.DB) error {
+		// users хүснэгт дээр RLS асаалттай бөгөөд FORCE хийгдсэн тул seeder
+		// нь хүснэгтийн эзэн (owner) байсан ч мөр оруулахын тулд "service"
+		// үүргийг авах ёстой. set_config(..., true) нь SET LOCAL — зөвхөн
+		// энэ транзакцид хүчинтэй.
+		if cfgErr := tx.Exec(
+			`SELECT set_config('app.user_role', ?, true)`, string(rls.RoleService),
+		).Error; cfgErr != nil {
+			return cfgErr
+		}
 		for i := range userData {
 			userData[i].CreatedAt = time.Now().UTC()
 			if createErr := tx.Omit("Id").Create(&userData[i]).Error; createErr != nil {

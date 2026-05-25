@@ -10,6 +10,8 @@ import (
 	"templatev27/internal/apperror"
 	"templatev27/internal/datasources/records"
 	"templatev27/pkg/logger"
+
+	"gorm.io/gorm"
 )
 
 func (r *postgreUserRepository) SoftDelete(ctx context.Context, id string) error {
@@ -25,26 +27,30 @@ func (r *postgreUserRepository) SoftDelete(ctx context.Context, id string) error
 	// idempotent байлгана — аль хэдийн устгагдсан мөрийг gorm.DeletedAt
 	// scope алгасч, RowsAffected == 0 гарна.
 	now := time.Now().UTC()
-	res := r.conn.WithContext(ctx).
-		Model(&records.Users{}).
-		Where("id = ?", id).
-		Updates(map[string]interface{}{
-			"deleted_at": now,
-			"updated_at": now,
-		})
-	if res.Error != nil {
+	var rowsAffected int64
+	err := r.withRLS(ctx, func(tx *gorm.DB) error {
+		res := tx.Model(&records.Users{}).
+			Where("id = ?", id).
+			Updates(map[string]interface{}{
+				"deleted_at": now,
+				"updated_at": now,
+			})
+		rowsAffected = res.RowsAffected
+		return res.Error
+	})
+	if err != nil {
 		logger.ErrorWithContext(ctx, "Failed to soft-delete user", logger.Fields{
 			"repository": repositoryName,
 			"method":     funcName,
 			"query":      queryName,
 			"file":       fileName,
-			"error":      res.Error.Error(),
+			"error":      err.Error(),
 			"table":      "users",
 			"user_id":    id,
 		})
-		return res.Error
+		return err
 	}
-	if res.RowsAffected == 0 {
+	if rowsAffected == 0 {
 		return apperror.NotFound("user not found")
 	}
 	return nil

@@ -24,6 +24,8 @@ func (uc *usecase) Register(ctx context.Context, req RegisterRequest) (resp Regi
 		funcName    = "Register"
 		fileName    = "auth.register.go"
 	)
+	// RLS: шинэ хэрэглэгчийн мөр INSERT хийдэг тул "service" үүрэг шаардлагатай.
+	ctx = asService(ctx)
 	startTime := time.Now()
 	in := req.User
 

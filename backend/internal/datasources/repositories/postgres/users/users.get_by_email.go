@@ -30,7 +30,9 @@ func (r *postgreUserRepository) GetByEmail(ctx context.Context, inDom *domain.Us
 	// урсгалуудыг хангах ёсгүй. GORM-ийн gorm.DeletedAt scope нь
 	// deleted_at IS NULL предикатыг автоматаар нэмдэг.
 	var stored records.Users
-	err = r.conn.WithContext(ctx).Where(`"email" = ?`, userRecord.Email).First(&stored).Error
+	err = r.withRLS(ctx, func(tx *gorm.DB) error {
+		return tx.Where(`"email" = ?`, userRecord.Email).First(&stored).Error
+	})
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return domain.User{}, apperror.NotFound("user not found")

@@ -31,6 +31,8 @@ func (uc *usecase) ForgotPassword(ctx context.Context, req ForgotPasswordRequest
 		funcName    = "ForgotPassword"
 		fileName    = "auth.forgot_password.go"
 	)
+	// RLS: нэвтрэхээс өмнөх email хайлт тул DB рүү "service" үүргээр хандана.
+	ctx = asService(ctx)
 	startTime := time.Now()
 	email := domain.NormalizeEmail(req.Email)
 

@@ -11,6 +11,7 @@ import (
 	"templatev27/internal/business/usecases/auth"
 	"templatev27/internal/constants"
 	"templatev27/internal/datasources/caches"
+	"templatev27/internal/datasources/rls"
 	V1Handler "templatev27/internal/http/handlers/v1"
 	"templatev27/pkg/jwt"
 	"templatev27/pkg/logger"
@@ -129,6 +130,16 @@ func (m *AuthMiddleware) Handle(c fiber.Ctx) error {
 		})
 		return V1Handler.NewAbortResponse(c, "you don't have access for this action")
 	}
+
+	// RLS: доош урсгах repository query-үүд хэрэглэгчийн өөрийнх нь мөрөөр
+	// (admin бол бүх мөрөөр) хязгаарлагдахаар request context-д identity
+	// суулгана. SetContext-ийн дараа handler-ийн c.Context() энэ баяжуулсан
+	// context-г буцаадаг тул identity нь usecase → repository хүртэл дамжина.
+	role := rls.RoleUser
+	if user.IsAdmin {
+		role = rls.RoleAdmin
+	}
+	c.SetContext(rls.With(c.Context(), rls.Identity{UserID: user.UserID, Role: role}))
 
 	c.Locals(constants.CtxAuthenticatedUserKey, user)
 	return c.Next()

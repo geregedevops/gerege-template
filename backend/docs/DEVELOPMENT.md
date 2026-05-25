@@ -71,6 +71,18 @@ Migrations are raw SQL files in `migrations/`, applied by the runner in
 `internal/datasources/migration/`, followed by an idempotent GORM
 `AutoMigrate` of the models in `internal/datasources/records/`.
 
+**Row-Level Security:** `6_enable_rls_users.up.sql` enables + `FORCE`s RLS on
+`users` with self/admin/service policies (see
+[ARCHITECTURE → Row-Level Security](ARCHITECTURE.md#row-level-security-rls)). Once
+applied, any code path that hits the `users` table must carry an identity in the
+request `context.Context` or the policies deny every row:
+
+- Inside a request, identity is set for you — `service` by the pre-auth
+  `usecases/auth` flows, `user`/`admin` by `middleware.auth.go`.
+- Outside a request (scripts, jobs, tests that call the repo directly), wrap your
+  context with `rls.WithService(ctx)` / `rls.WithUser(ctx, id)` first. The seeder
+  already sets the `service` GUC inside its transaction.
+
 ## Code Organization
 
 ### Adding a New Feature
@@ -320,6 +332,8 @@ Before deploying, ensure:
 - [ ] Secrets come from environment, never committed
 - [ ] `ALLOWED_ORIGINS` is set (no wildcard) in production
 - [ ] HTTPS is enforced at the edge / load balancer
+- [ ] RLS migration (`6_enable_rls_users`) is applied; any new `users`-touching
+      code path sets an `rls` identity (defaults to fail-closed otherwise)
 
 ---
 

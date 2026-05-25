@@ -29,6 +29,8 @@ func (uc *usecase) Login(ctx context.Context, req LoginRequest) (resp LoginRespo
 		funcName    = "Login"
 		fileName    = "auth.login.go"
 	)
+	// RLS: нэвтрэхээс өмнөх email хайлт тул DB рүү "service" үүргээр хандана.
+	ctx = asService(ctx)
 	startTime := time.Now()
 	email := domain.NormalizeEmail(req.Email)
 	password := req.Password

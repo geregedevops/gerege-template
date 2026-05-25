@@ -14,6 +14,7 @@ import (
 	"templatev27/pkg/logger"
 
 	"github.com/jackc/pgx/v5/pgconn"
+	"gorm.io/gorm"
 )
 
 // pgUniqueViolation нь Postgres-ийн unique_violation-ийн SQLSTATE код юм.
@@ -37,11 +38,13 @@ func (r *postgreUserRepository) Store(ctx context.Context, inDom *domain.User) (
 	// амжилтгүй болбол (сүлжээний саатал, replica lag) INSERT аль хэдийн
 	// commit хийгдсэн байсан бөгөөд хэрэглэгч хариунд өнчирдөг байсан.
 	var stored records.Users
-	err := r.conn.WithContext(ctx).Raw(`
-		INSERT INTO users(id, username, email, password, active, role_id, created_at)
-		VALUES (uuid_generate_v4(), ?, ?, ?, false, ?, ?)
-		RETURNING id, username, email, password, active, role_id, created_at, updated_at, deleted_at, password_changed_at
-	`, userRecord.Username, userRecord.Email, userRecord.Password, userRecord.RoleId, userRecord.CreatedAt).Scan(&stored).Error
+	err := r.withRLS(ctx, func(tx *gorm.DB) error {
+		return tx.Raw(`
+			INSERT INTO users(id, username, email, password, active, role_id, created_at)
+			VALUES (uuid_generate_v4(), ?, ?, ?, false, ?, ?)
+			RETURNING id, username, email, password, active, role_id, created_at, updated_at, deleted_at, password_changed_at
+		`, userRecord.Username, userRecord.Email, userRecord.Password, userRecord.RoleId, userRecord.CreatedAt).Scan(&stored).Error
+	})
 	if err != nil {
 		// GORM-ийн Raw().Scan() зам нь TranslateError-г ажиллуулдаггүй тул
 		// gorm.ErrDuplicatedKey хэзээ ч үүсэхгүй. Иймд pgx драйверын буцаасан

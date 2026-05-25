@@ -72,6 +72,19 @@ Migration-ууд нь `migrations/` доторх түүхий SQL файлууд
 `internal/datasources/records/` доторх model-уудын idempotent GORM
 `AutoMigrate`-ээр үргэлжилнэ.
 
+**Row-Level Security:** `6_enable_rls_users.up.sql` нь `users` дээр RLS-г асааж
+`FORCE` хийгээд self/admin/service бодлоготой болгоно
+([ARCHITECTURE → Row-Level Security](ARCHITECTURE_MN.md#row-level-security-rls)-г
+үз). Хэрэгжсэний дараа `users` хүснэгтэд хүрэх ямар ч код request-ийн
+`context.Context`-д identity зөөж явах ёстой, эс бөгөөс бодлогууд бүх мөрийг
+хаана:
+
+- Хүсэлтийн дотор identity автоматаар тогтоогдоно — нэвтрэхээс өмнөх
+  `usecases/auth` урсгалуудаар `service`, `middleware.auth.go`-оор `user`/`admin`.
+- Хүсэлтээс гадуур (script, job, repo-г шууд дууддаг тест) context-оо эхлээд
+  `rls.WithService(ctx)` / `rls.WithUser(ctx, id)`-ээр боо. Seeder нь өөрийн
+  транзакцид `service` GUC-г аль хэдийн тогтоодог.
+
 ## Кодын зохион байгуулалт (Code Organization)
 
 ### Шинэ фичер нэмэх (Adding a New Feature)
@@ -322,6 +335,8 @@ Deploy хийхээс өмнө дараахыг баталгаажуул:
 - [ ] Нууц утгууд environment-ээс ирдэг, хэзээ ч commit хийгддэггүй
 - [ ] Production-д `ALLOWED_ORIGINS` тохируулагдсан (wildcard байхгүй)
 - [ ] Edge / load balancer дээр HTTPS албадан хэрэгжсэн
+- [ ] RLS migration (`6_enable_rls_users`) хэрэгжсэн; `users`-д хүрэх шинэ код
+      бүр `rls` identity тогтоодог (эс бөгөөс fail-closed болж хаагдана)
 
 ---
 

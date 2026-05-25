@@ -17,8 +17,16 @@ import (
 	"templatev27/internal/business/domain"
 	repointerface "templatev27/internal/datasources/repositories/interface"
 	postgresrepo "templatev27/internal/datasources/repositories/postgres/users"
+	"templatev27/internal/datasources/rls"
 	"templatev27/internal/test/testenv"
 )
+
+// svcCtx нь RLS-ийн "service" identity-тэй context буцаана. Repository
+// тестүүд нь HTTP middleware / auth usecase-ийг алгасдаг тул identity-г
+// өөрсдөө тогтоох ёстой; production-д энэ нь тэдгээр давхаргаар
+// хийгддэг. users хүснэгт дээр RLS FORCE хийгдсэн тул хүснэгтийн эзэн
+// (тестийн DB хэрэглэгч) ч энэ identity-гүйгээр мөр харахгүй.
+func svcCtx() context.Context { return rls.WithService(context.Background()) }
 
 // fixture нь тестүүдэд зориулж боломжийн өгөгдмөл утгуудтай UserDomain-г
 // бүтээдэг. Дуудагч зөвхөн өөрийн хувилбарт хамаатай зүйлсийг дарж бичнэ.
@@ -35,7 +43,7 @@ func fixture(email string) *domain.User {
 func TestRepo_StoreAndGetByEmail(t *testing.T) {
 	db := testenv.StartPostgres(t)
 	repo := postgresrepo.NewUserRepository(db)
-	ctx := context.Background()
+	ctx := svcCtx()
 
 	stored, err := repo.Store(ctx, fixture("alice@example.com"))
 	require.NoError(t, err)
@@ -51,7 +59,7 @@ func TestRepo_StoreAndGetByEmail(t *testing.T) {
 func TestRepo_StoreDuplicateEmail_ReturnsConflict(t *testing.T) {
 	db := testenv.StartPostgres(t)
 	repo := postgresrepo.NewUserRepository(db)
-	ctx := context.Background()
+	ctx := svcCtx()
 
 	_, err := repo.Store(ctx, fixture("dup@example.com"))
 	require.NoError(t, err)
@@ -72,7 +80,7 @@ func TestRepo_GetByEmail_NotFound(t *testing.T) {
 	db := testenv.StartPostgres(t)
 	repo := postgresrepo.NewUserRepository(db)
 
-	_, err := repo.GetByEmail(context.Background(), &domain.User{Email: "nobody@example.com"})
+	_, err := repo.GetByEmail(svcCtx(), &domain.User{Email: "nobody@example.com"})
 	require.Error(t, err)
 	var domErr *apperror.DomainError
 	require.True(t, errors.As(err, &domErr))
@@ -82,7 +90,7 @@ func TestRepo_GetByEmail_NotFound(t *testing.T) {
 func TestRepo_GetByID_RoundTrip(t *testing.T) {
 	db := testenv.StartPostgres(t)
 	repo := postgresrepo.NewUserRepository(db)
-	ctx := context.Background()
+	ctx := svcCtx()
 
 	stored, err := repo.Store(ctx, fixture("byid@example.com"))
 	require.NoError(t, err)
@@ -95,7 +103,7 @@ func TestRepo_GetByID_RoundTrip(t *testing.T) {
 func TestRepo_SoftDelete_HidesFromQueries(t *testing.T) {
 	db := testenv.StartPostgres(t)
 	repo := postgresrepo.NewUserRepository(db)
-	ctx := context.Background()
+	ctx := svcCtx()
 
 	stored, err := repo.Store(ctx, fixture("gone@example.com"))
 	require.NoError(t, err)
@@ -122,7 +130,7 @@ func TestRepo_SoftDelete_HidesFromQueries(t *testing.T) {
 func TestRepo_SoftDelete_AllowsReregistration(t *testing.T) {
 	db := testenv.StartPostgres(t)
 	repo := postgresrepo.NewUserRepository(db)
-	ctx := context.Background()
+	ctx := svcCtx()
 
 	stored, err := repo.Store(ctx, fixture("recycle@example.com"))
 	require.NoError(t, err)
@@ -138,7 +146,7 @@ func TestRepo_SoftDelete_AllowsReregistration(t *testing.T) {
 func TestRepo_List_FiltersAndPagination(t *testing.T) {
 	db := testenv.StartPostgres(t)
 	repo := postgresrepo.NewUserRepository(db)
-	ctx := context.Background()
+	ctx := svcCtx()
 
 	// Role болон идэвхтэй төлөвүүдийн холимог seed хий.
 	for i, email := range []string{"a@x.com", "b@x.com", "c@x.com"} {

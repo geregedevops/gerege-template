@@ -25,6 +25,9 @@ func (uc *usecase) Refresh(ctx context.Context, req RefreshRequest) (resp LoginR
 		funcName    = "Refresh"
 		fileName    = "auth.refresh.go"
 	)
+	// RLS: токен сэргээх нь баталгаажуулалтаас өмнө ажилладаг тул DB рүү
+	// "service" үүргээр хандана.
+	ctx = asService(ctx)
 	startTime := time.Now()
 	refreshToken := req.RefreshToken
 
