@@ -34,7 +34,7 @@ func register(t *testing.T, fix *testenv.AuthFixture, email, password string) do
 	require.NoError(t, err)
 
 	require.NoError(t, fix.Auth.SendOTP(ctx, auth.SendOTPRequest{Email: email}))
-	otp := fix.Mailer.LastOTP(t, email)
+	otp := fix.Verifier.LastOTP(t, email)
 	require.NoError(t, fix.Auth.VerifyOTP(ctx, auth.VerifyOTPRequest{Email: email, OTPCode: otp}))
 
 	return resp.User
@@ -73,7 +73,7 @@ func TestE2E_OTPBruteForceLockout(t *testing.T) {
 		assert.Equal(t, apperror.ErrTypeBadRequest, domErr.Type, "attempt %d: %v", i+1, domErr)
 	}
 
-	correctOTP := fix.Mailer.LastOTP(t, "lock@example.com")
+	correctOTP := fix.Verifier.LastOTP(t, "lock@example.com")
 	err = fix.Auth.VerifyOTP(ctx, auth.VerifyOTPRequest{Email: "lock@example.com", OTPCode: correctOTP})
 	require.Error(t, err)
 	var domErr *apperror.DomainError
@@ -157,7 +157,7 @@ func TestE2E_VerifyOTPActivatesUserAndAllowsLogin(t *testing.T) {
 	require.Error(t, err, "login must fail before OTP verification")
 
 	require.NoError(t, fix.Auth.SendOTP(ctx, auth.SendOTPRequest{Email: "activate@example.com"}))
-	otp := fix.Mailer.LastOTP(t, "activate@example.com")
+	otp := fix.Verifier.LastOTP(t, "activate@example.com")
 	require.NoError(t, fix.Auth.VerifyOTP(ctx, auth.VerifyOTPRequest{Email: "activate@example.com", OTPCode: otp}))
 
 	out, err := fix.Auth.Login(ctx, auth.LoginRequest{Email: "activate@example.com", Password: "Secret_123!"})

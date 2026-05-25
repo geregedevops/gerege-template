@@ -3,8 +3,14 @@ import { REFRESH_COOKIE } from '@/lib/cookies';
 
 // Хамгаалагдсан хуудаснууд — refresh токен (durable session) байхгүй бол /login руу.
 const PROTECTED = ['/profile', '/settings'];
-// Нэвтэрсэн хэрэглэгчийг буцаалгүй харуулах ёсгүй auth хуудаснууд.
-const AUTH_ONLY = ['/login', '/register'];
+
+// Тэмдэглэл: "нэвтэрсэн" хэрэглэгчийг /login, /register хуудаснаас буцаах
+// AUTH_ONLY redirect-ийг зориудаар авч хаясан. Шалтгаан: refresh cookie нь
+// browser-д 7 хоног үлддэг ч backend талаас (logout, password rotation,
+// token cutoff) хүчингүйжсэн байж болно — энэ үед middleware "нэвтэрсэн"
+// гэж буруу тооцож /login руу буцалт хийдгийг хаасан тул хэрэглэгч 307 loop-д
+// гацаж нэвтэрч чаддаггүй байв. Нэвтэрсэн хэрэглэгч /login руу орвол ердөө
+// маягт харагдана; нэвтэрмэгц setSession нь хуучин cookie-г шинээр дарж бичнэ.
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -14,13 +20,6 @@ export function middleware(req: NextRequest) {
     const url = req.nextUrl.clone();
     url.pathname = '/login';
     url.searchParams.set('next', pathname);
-    return NextResponse.redirect(url);
-  }
-
-  if (AUTH_ONLY.some((p) => pathname === p || pathname.startsWith(p + '/')) && signedIn) {
-    const url = req.nextUrl.clone();
-    url.pathname = '/';
-    url.search = '';
     return NextResponse.redirect(url);
   }
 

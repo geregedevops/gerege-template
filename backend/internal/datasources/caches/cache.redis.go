@@ -24,6 +24,13 @@ type RedisCache interface {
 	// TTL-тэйгээр key дор бичнэ. Дуудалт бүр defaultOpTimeout-оор
 	// хязгаарлагдсан тул удаан Redis дуудагчийг блоклож чадахгүй.
 	Set(ctx context.Context, key string, value interface{}) error
+	// SetWithTTL нь Set-тэй адил боловч өгөгдмөл TTL-ийг ttl аргументаар
+	// орлуулна — Redis-д SET key value EX ttl (атомар) болж явна. Set+Expire
+	// гэсэн хоёр алхамтай хослоос ялгаатай нь үлдсэн TTL цонх race-гүй —
+	// Expire алдсан ч key нь өгөгдмөл TTL-тэй бус, заасан TTL-тэйгээ үлдэнэ.
+	// Тийм ч учраас password reset token гэх мэт өгөгдмөл TTL-ээс өөр (ихэвчлэн
+	// илүү урт) хугацаа шаарддаг түр зуурын secret-уудад үүнийг хэрэглэнэ.
+	SetWithTTL(ctx context.Context, key string, value interface{}, ttl time.Duration) error
 	// Get нь key дахь JSON-оор decode хийсэн мөрийг буцаана, эсвэл key
 	// байхгүй үед redis.Nil-г буцаана.
 	Get(ctx context.Context, key string) (string, error)
@@ -103,6 +110,17 @@ func (cache *redisCache) Set(ctx context.Context, key string, value interface{})
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
 	return cache.client.Set(ctx, key, payload, cache.expires*time.Minute).Err()
+}
+
+func (cache *redisCache) SetWithTTL(ctx context.Context, key string, value interface{}, ttl time.Duration) error {
+	payload, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := withTimeout(ctx)
+	defer cancel()
+	return cache.client.Set(ctx, key, payload, ttl).Err()
 }
 
 func (cache *redisCache) Get(ctx context.Context, key string) (string, error) {

@@ -11,13 +11,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"templatev27/internal/business/usecases/auth"
 	"templatev27/internal/business/usecases/users"
 	"templatev27/internal/config"
 	"templatev27/internal/datasources/caches"
 	userspostgres "templatev27/internal/datasources/repositories/postgres/users"
+	"templatev27/pkg/helpers"
 	"templatev27/pkg/jwt"
+	"templatev27/pkg/verify"
 )
 
 // AuthFixture нь end-to-end тестүүдэд ашиглагддаг бүрэн холбогдсон auth
@@ -30,10 +33,67 @@ import (
 // Auth, хэрэглэгчийн бичлэгүүдийг шууд унших эсвэл өөрчлөх шаардлагатай
 // аливаа тохиргоо / баталгаажуулалтын алхамд Users.
 type AuthFixture struct {
-	Auth   auth.Usecase
-	Users  users.Usecase
-	Mailer *CapturingMailer
-	JWT    jwt.JWTService
+	Auth     auth.Usecase
+	Users    users.Usecase
+	Mailer   *CapturingMailer
+	Verifier *FakeVerifier
+	JWT      jwt.JWTService
+}
+
+// FakeVerifier нь verify.Sender-ийг хэрэгжүүлдэг локал бодит хэлбэр —
+// integration тестүүд OTP-ийг алсын API-руу хийхгүйгээр код-руу хүрнэ.
+// Send нь дотооддоо 6 оронтой код үүсгэж, request_id-той хамт хадгална;
+// Check нь тэр кодыг хэрэглэгчийн оруулсантай тулгана. Нэг удаагийн
+// semantic-ийг хадгалахын тулд амжилттай Check нь request_id-г устгана.
+type FakeVerifier struct {
+	mu       sync.Mutex
+	issued   map[string]otpCapture
+	captured []otpCapture
+}
+
+func newFakeVerifier() *FakeVerifier {
+	return &FakeVerifier{issued: make(map[string]otpCapture)}
+}
+
+// Send нь шинэ код үүсгэж, олгосон request_id буцаана. Алсын verify.gecloud.mn-ийг орлоно.
+func (v *FakeVerifier) Send(_ context.Context, destination string) (string, error) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	code, err := helpers.GenerateOTPCode(6)
+	if err != nil {
+		return "", err
+	}
+	rid := "fake_" + uuid.NewString()
+	entry := otpCapture{Code: code, Receiver: destination, RequestID: rid}
+	v.issued[rid] = entry
+	v.captured = append(v.captured, entry)
+	return rid, nil
+}
+
+// Check нь хэрэглэгчийн оруулсан кодыг request_id-ийн дор хадгалсан кодтой тулгана.
+func (v *FakeVerifier) Check(_ context.Context, requestID, code string) error {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	entry, ok := v.issued[requestID]
+	if !ok || entry.Code != code {
+		return verify.ErrNotApproved
+	}
+	delete(v.issued, requestID)
+	return nil
+}
+
+// LastOTP нь хүлээн авагчид зориулж хамгийн сүүлд "илгээсэн" OTP-г буцаана.
+func (v *FakeVerifier) LastOTP(t *testing.T, receiver string) string {
+	t.Helper()
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	for i := len(v.captured) - 1; i >= 0; i-- {
+		if v.captured[i].Receiver == receiver {
+			return v.captured[i].Code
+		}
+	}
+	t.Fatalf("no OTP captured for %s", receiver)
+	return ""
 }
 
 // CapturingMailer нь OTP+хүлээн авагч хос бүрийг бүртгэдэг тул тестүүд
@@ -43,7 +103,7 @@ type CapturingMailer struct {
 	captured []otpCapture
 }
 
-type otpCapture struct{ Code, Receiver string }
+type otpCapture struct{ Code, Receiver, RequestID string }
 
 // SendOTP нь mailer.OTPMailer-г хангадаг. Үргэлж амжилттай болдог.
 func (m *CapturingMailer) SendOTP(_ context.Context, code, receiver string) error {
@@ -117,11 +177,12 @@ func NewAuthFixture(t *testing.T) *AuthFixture {
 	)
 
 	mailer := &CapturingMailer{}
+	verifier := newFakeVerifier()
 	repo := userspostgres.NewUserRepository(db)
 	usersUC := users.NewUsecase(repo, ristretto, users.Config{
 		BcryptCost: config.AppConfig.BcryptCost,
 	})
-	authUC := auth.NewUsecase(usersUC, jwtSvc, mailer, redis, auth.Config{
+	authUC := auth.NewUsecase(usersUC, jwtSvc, mailer, verifier, redis, auth.Config{
 		OTPMaxAttempts:    5,
 		OTPTTL:            5 * time.Minute,
 		PasswordResetTTL:  30 * time.Minute,
@@ -133,9 +194,10 @@ func NewAuthFixture(t *testing.T) *AuthFixture {
 	})
 
 	return &AuthFixture{
-		Auth:   authUC,
-		Users:  usersUC,
-		Mailer: mailer,
-		JWT:    jwtSvc,
+		Auth:     authUC,
+		Users:    usersUC,
+		Mailer:   mailer,
+		Verifier: verifier,
+		JWT:      jwtSvc,
 	}
 }

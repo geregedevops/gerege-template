@@ -55,6 +55,43 @@ type Config struct {
 	REDISExpired  int    `mapstructure:"REDIS_EXPIRED"`
 
 	AllowedOrigins string `mapstructure:"ALLOWED_ORIGINS"`
+
+	// TrustedProxies нь Fiber-ийн X-Forwarded-For / X-Real-IP толгойг
+	// итгэлтэйгээр унших ёстой proxy-уудын IP / CIDR жагсаалт (таслалаар
+	// тусгаарлагдсан). Empty үед proxy-ийн толгойг үл тоомсорлоно — c.IP()
+	// нь TCP peer-ийн IP-г буцаана. Production-д nginx гэх мэт reverse
+	// proxy ард ажиллах үед энэ нь шаардлагатай — өөрөөр бол rate limit,
+	// audit, access log бүгд proxy-ийн ганц IP харна.
+	TrustedProxies string `mapstructure:"TRUSTED_PROXIES"`
+
+	// GeregeCloud Verify (verify.gecloud.mn) — OTP илгээх/шалгах ажлыг
+	// гадаад үйлчилгээнд шилжүүлдэг. VerifyAPIKey хоосон бол OTP клиент
+	// бүтэх боловч дуудлага бүр "missing api key" алдаа буцаах тул
+	// SendOTP/VerifyOTP урсгал тэр даруй амжилтгүй болно — operator-д
+	// чимээгүй ажиллахын оронд тодорхой сэрэмжлүүлэг өгөх боллоо.
+	VerifyAPIBase string `mapstructure:"VERIFY_API_BASE"`
+	VerifyAPIKey  string `mapstructure:"VERIFY_API_KEY"`
+	VerifyChannel string `mapstructure:"VERIFY_CHANNEL"`
+}
+
+// TrustedProxiesList нь TRUSTED_PROXIES-г таслалаар тусгаарлан, цэвэрлэсэн
+// IP/CIDR жагсаалт болгон буцаана. Empty эсвэл бүгд хоосон үед nil буцаана —
+// дуудагч энэ үед Fiber-д proxy итгэлийг идэвхжүүлэхгүй.
+func (c *Config) TrustedProxiesList() []string {
+	if c.TrustedProxies == "" {
+		return nil
+	}
+	parts := strings.Split(c.TrustedProxies, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if trimmed := strings.TrimSpace(p); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // AllowedOriginsList нь CORS origin-уудыг slice болгож буцаана. Зөвхөн хоосон БА орчин production биш үед ["*"] утгыг анхдагчаар авна.
@@ -208,6 +245,9 @@ func applyDefaults() {
 	}
 	if AppConfig.JWTRefreshExpired == 0 {
 		AppConfig.JWTRefreshExpired = 7
+	}
+	if AppConfig.VerifyChannel == "" {
+		AppConfig.VerifyChannel = "email"
 	}
 	// OTel-ийн sample ratio нь зөвхөн exporter тохируулагдсан БА оператор
 	// ratio-г тодорхой зааж өгөөгүй үед 1.0 утгыг анхдагчаар авна. Exporter

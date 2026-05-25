@@ -75,14 +75,19 @@ func (uc *usecase) ResetPassword(ctx context.Context, req ResetPasswordRequest) 
 		return err
 	}
 
-	userID, getErr := uc.redisCache.Get(ctx, PasswordResetKey(token))
+	// GetDel-ээр атомаар уншиж-устгана — Get + дараа нь Del нь TOCTOU цоорхой
+	// үлдээдэг тул зэрэгцээ хоёр хүсэлт ижил token-оор амжилттай дуусдаг байв.
+	// Эндээс эхлээд token нь хэрэгтэй болсон ч "хэрэглэгдсэн" төлөвт оров —
+	// доорх алхмын аль нэг нь алдахад токенаа дахин ашиглах боломжгүй болсон
+	// гэдгийг хэрэглэгчид нь /password/forgot-оор шинээр авах ёстой.
+	userID, getErr := uc.redisCache.GetDel(ctx, PasswordResetKey(token))
 	if getErr != nil || userID == "" {
 		err = apperror.Unauthorized("reset token is invalid or expired")
 		fields := logger.Fields{
 			"usecase": usecaseName,
 			"method":  funcName,
 			"file":    fileName,
-			"step":    "redis_get_reset_token",
+			"step":    "redis_getdel_reset_token",
 			"error":   err.Error(),
 		}
 		if getErr != nil {
@@ -134,7 +139,8 @@ func (uc *usecase) ResetPassword(ctx context.Context, req ResetPasswordRequest) 
 		})
 		return err
 	}
-	_ = uc.redisCache.Del(ctx, PasswordResetKey(token))
+	// PasswordResetKey-г GetDel дээр аль хэдийн устгасан; зөвхөн user→token
+	// индексийг л цэвэрлэнэ.
 	_ = uc.redisCache.Del(ctx, UserResetIndexKey(userID))
 	if user.PasswordChangedAt != nil {
 		uc.recordTokenCutoff(ctx, userID, *user.PasswordChangedAt)

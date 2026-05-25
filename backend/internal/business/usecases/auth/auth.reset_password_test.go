@@ -30,13 +30,13 @@ func TestResetPassword(t *testing.T) {
 			token:       "valid-tok",
 			newPassword: "Newpwd_999!",
 			setup: func(f *fixture) {
-				f.redis.On("Get", mock.Anything, "pwd_reset:valid-tok").Return("user-1", nil).Once()
+				// GetDel нь Get + Del-ийг атомар орлуулдаг.
+				f.redis.On("GetDel", mock.Anything, "pwd_reset:valid-tok").Return("user-1", nil).Once()
 				f.users.On("GetByID", mock.Anything, users.GetByIDRequest{ID: "user-1"}).Return(users.GetByIDResponse{User: activeUser(t)}, nil).Once()
 				f.users.On("UpdatePassword", mock.Anything, mock.MatchedBy(func(req users.UpdatePasswordRequest) bool {
 					u := req.User
 					return u.ID == "user-1" && u.PasswordChangedAt != nil
 				})).Return(nil).Once()
-				f.redis.On("Del", mock.Anything, "pwd_reset:valid-tok").Return(nil).Once()
 				f.redis.On("Del", mock.Anything, "pwd_reset_user:user-1").Return(nil).Once()
 				f.redis.On("Set", mock.Anything, "pwd_cutoff:user-1", mock.AnythingOfType("string")).Return(nil).Once()
 				f.redis.On("Expire", mock.Anything, "pwd_cutoff:user-1", mock.AnythingOfType("time.Duration")).Return(nil).Once()
@@ -63,7 +63,7 @@ func TestResetPassword(t *testing.T) {
 			token:       "stale",
 			newPassword: "Newpwd_999!",
 			setup: func(f *fixture) {
-				f.redis.On("Get", mock.Anything, "pwd_reset:stale").Return("", errors.New("redis: nil")).Once()
+				f.redis.On("GetDel", mock.Anything, "pwd_reset:stale").Return("", errors.New("redis: nil")).Once()
 			},
 			wantErr:     true,
 			wantErrType: apperror.ErrTypeUnauthorized,

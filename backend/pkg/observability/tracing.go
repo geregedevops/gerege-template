@@ -67,7 +67,7 @@ func SetupTracing(ctx context.Context, cfg TracingConfig) (Shutdown, error) {
 
 	res, err := resource.New(ctx,
 		resource.WithAttributes(
-			semconv.ServiceName(orDefault(cfg.ServiceName, "go-rest-boilerplate")),
+			semconv.ServiceName(orDefault(cfg.ServiceName, "gerege-template")),
 			semconv.DeploymentEnvironment(orDefault(cfg.Environment, "development")),
 		),
 	)

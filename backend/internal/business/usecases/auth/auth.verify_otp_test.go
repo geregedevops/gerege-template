@@ -15,6 +15,7 @@ import (
 	"templatev27/internal/apperror"
 	"templatev27/internal/business/usecases/auth"
 	"templatev27/internal/business/usecases/users"
+	"templatev27/pkg/verify"
 )
 
 func TestVerifyOTP(t *testing.T) {
@@ -30,7 +31,7 @@ func TestVerifyOTP(t *testing.T) {
 		wantErrType apperror.ErrorType
 	}{
 		{
-			name:  "happy path activates user and clears OTP + attempt keys",
+			name:  "happy path consumes request_id, activates user, clears attempt key",
 			email: "patrick@example.com",
 			code:  "123456",
 			setup: func(f *fixture) {
@@ -39,14 +40,15 @@ func TestVerifyOTP(t *testing.T) {
 				f.users.On("GetByEmail", mock.Anything, users.GetByEmailRequest{Email: "patrick@example.com"}).Return(users.GetByEmailResponse{User: user}, nil).Once()
 				f.redis.On("Incr", mock.Anything, "otp_attempts:patrick@example.com").Return(int64(1), nil).Once()
 				f.redis.On("Expire", mock.Anything, "otp_attempts:patrick@example.com", mock.AnythingOfType("time.Duration")).Return(nil).Once()
-				f.redis.On("Get", mock.Anything, "user_otp:patrick@example.com").Return("123456", nil).Once()
+				// request_id-г GetDel-ээр атомар уншиж устгана.
+				f.redis.On("GetDel", mock.Anything, "user_otp:patrick@example.com").Return("clv_abc123", nil).Once()
+				f.verify.On("Check", mock.Anything, "clv_abc123", "123456").Return(nil).Once()
 				f.users.On("Activate", mock.Anything, users.ActivateRequest{UserID: user.ID}).Return(nil).Once()
-				f.redis.On("Del", mock.Anything, "user_otp:patrick@example.com").Return(nil).Once()
 				f.redis.On("Del", mock.Anything, "otp_attempts:patrick@example.com").Return(nil).Once()
 			},
 		},
 		{
-			name:  "wrong code returns BadRequest after counting the attempt",
+			name:  "wrong code returns BadRequest, request_id rehydrated for further attempts",
 			email: "patrick@example.com",
 			code:  "999999",
 			setup: func(f *fixture) {
@@ -55,22 +57,24 @@ func TestVerifyOTP(t *testing.T) {
 				f.users.On("GetByEmail", mock.Anything, users.GetByEmailRequest{Email: "patrick@example.com"}).Return(users.GetByEmailResponse{User: user}, nil).Once()
 				f.redis.On("Incr", mock.Anything, "otp_attempts:patrick@example.com").Return(int64(1), nil).Once()
 				f.redis.On("Expire", mock.Anything, "otp_attempts:patrick@example.com", mock.AnythingOfType("time.Duration")).Return(nil).Once()
-				f.redis.On("Get", mock.Anything, "user_otp:patrick@example.com").Return("123456", nil).Once()
+				f.redis.On("GetDel", mock.Anything, "user_otp:patrick@example.com").Return("clv_abc123", nil).Once()
+				f.verify.On("Check", mock.Anything, "clv_abc123", "999999").Return(verify.ErrNotApproved).Once()
+				f.redis.On("SetWithTTL", mock.Anything, "user_otp:patrick@example.com", "clv_abc123", mock.AnythingOfType("time.Duration")).Return(nil).Once()
 			},
 			wantErr:     true,
 			wantErrType: apperror.ErrTypeBadRequest,
 		},
 		{
-			name:  "submitted code with wrong length is rejected (constant-time path)",
+			name:  "missing request_id surfaces as BadRequest expired",
 			email: "patrick@example.com",
-			code:  "12",
+			code:  "123456",
 			setup: func(f *fixture) {
 				user := activeUser(t)
 				user.Active = false
 				f.users.On("GetByEmail", mock.Anything, users.GetByEmailRequest{Email: "patrick@example.com"}).Return(users.GetByEmailResponse{User: user}, nil).Once()
 				f.redis.On("Incr", mock.Anything, "otp_attempts:patrick@example.com").Return(int64(1), nil).Once()
 				f.redis.On("Expire", mock.Anything, "otp_attempts:patrick@example.com", mock.AnythingOfType("time.Duration")).Return(nil).Once()
-				f.redis.On("Get", mock.Anything, "user_otp:patrick@example.com").Return("123456", nil).Once()
+				f.redis.On("GetDel", mock.Anything, "user_otp:patrick@example.com").Return("", errors.New("redis: nil")).Once()
 			},
 			wantErr:     true,
 			wantErrType: apperror.ErrTypeBadRequest,
