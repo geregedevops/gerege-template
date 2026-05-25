@@ -27,6 +27,8 @@ func (uc *usecase) VerifyOTP(ctx context.Context, req VerifyOTPRequest) (err err
 		funcName    = "VerifyOTP"
 		fileName    = "auth.verify_otp.go"
 	)
+	// RLS: баталгаажаагүй хэрэглэгчийг идэвхжүүлдэг тул "service" үүрэг хэрэгтэй.
+	ctx = asService(ctx)
 	startTime := time.Now()
 	email := domain.NormalizeEmail(req.Email)
 	otpCode := req.OTPCode

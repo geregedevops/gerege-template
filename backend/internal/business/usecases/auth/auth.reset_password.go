@@ -24,6 +24,9 @@ func (uc *usecase) ResetPassword(ctx context.Context, req ResetPasswordRequest) 
 		funcName    = "ResetPassword"
 		fileName    = "auth.reset_password.go"
 	)
+	// RLS: хэрэглэгч нэвтрээгүй (зөвхөн reset токентой) тул нууц үг шинэчлэхэд
+	// "service" үүрэг шаардлагатай.
+	ctx = asService(ctx)
 	startTime := time.Now()
 	token := req.Token
 	newPassword := req.NewPassword

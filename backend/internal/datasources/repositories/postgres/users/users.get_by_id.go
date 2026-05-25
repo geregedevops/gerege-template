@@ -24,8 +24,11 @@ func (r *postgreUserRepository) GetByID(ctx context.Context, id string) (domain.
 	)
 	var stored records.Users
 	// GORM-ийн soft-delete (gorm.DeletedAt) нь үүнийг автоматаар
-	// deleted_at IS NULL байх мөрүүдээр хязгаарлана.
-	err := r.conn.WithContext(ctx).Where("id = ?", id).First(&stored).Error
+	// deleted_at IS NULL байх мөрүүдээр хязгаарлана. withRLS нь query-г
+	// транзакцид боож, context дахь identity-г RLS session GUC болгоно.
+	err := r.withRLS(ctx, func(tx *gorm.DB) error {
+		return tx.Where("id = ?", id).First(&stored).Error
+	})
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return domain.User{}, apperror.NotFound("user not found")

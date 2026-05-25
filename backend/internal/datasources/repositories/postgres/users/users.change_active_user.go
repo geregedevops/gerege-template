@@ -10,6 +10,8 @@ import (
 	"templatev27/internal/business/domain"
 	"templatev27/internal/datasources/records"
 	"templatev27/pkg/logger"
+
+	"gorm.io/gorm"
 )
 
 func (r *postgreUserRepository) ChangeActiveUser(ctx context.Context, inDom *domain.User) (err error) {
@@ -22,13 +24,14 @@ func (r *postgreUserRepository) ChangeActiveUser(ctx context.Context, inDom *dom
 	userRecord := records.FromUsersV1Domain(inDom)
 
 	// gorm.DeletedAt нь UPDATE-г deleted_at IS NULL мөрүүдээр хязгаарлана.
-	err = r.conn.WithContext(ctx).
-		Model(&records.Users{}).
-		Where("id = ?", userRecord.Id).
-		Updates(map[string]interface{}{
-			"active":     userRecord.Active,
-			"updated_at": time.Now().UTC(),
-		}).Error
+	err = r.withRLS(ctx, func(tx *gorm.DB) error {
+		return tx.Model(&records.Users{}).
+			Where("id = ?", userRecord.Id).
+			Updates(map[string]interface{}{
+				"active":     userRecord.Active,
+				"updated_at": time.Now().UTC(),
+			}).Error
+	})
 	if err != nil {
 		logger.ErrorWithContext(ctx, "Failed to update user active flag", logger.Fields{
 			"repository": repositoryName,

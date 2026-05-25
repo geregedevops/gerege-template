@@ -184,6 +184,20 @@ delete (анхдагч query-ууд устгасан мөрүүдийг авто
 round-trip-д `INSERT … RETURNING` ашиглана, давхардсан key-үүд (GORM
 `TranslateError`-оор) `apperror.Conflict` болж гарч ирнэ.
 
+Query бүр `withRLS(ctx, fn)` (`users.postgres.go`) дотор ажилладаг — энэ нь
+транзакц нээж, дуудагчийн identity-г Postgres-ийн Row-Level Security руу хоёр
+session GUC болгон query ажиллахаас өмнө нийтэлдэг:
+
+```go
+SELECT set_config('app.user_id', ?, true),   -- баталгаажсан хэрэглэгчийн UUID
+       set_config('app.user_role', ?, true)  -- 'service' | 'admin' | 'user'
+```
+
+`set_config(..., true)` нь `SET LOCAL` — зөвхөн транзакцид хүчинтэй — тул pool
+дахь холболт нэг хүсэлтийн identity-г дараагийнх руу "алддаггүй". Identity нь
+`rls.FromContext(ctx)`-ээс ирнэ; байхгүй бол GUC-ууд хоосон болж бодлогууд бүх
+мөрийг ХААНА (fail-closed). [Өгөгдлийн сан → Row-Level Security](#row-level-security-rls)-г үз.
+
 ### 5. Domain давхарга
 
 **Байршил:** `internal/business/domain/`
@@ -233,7 +247,40 @@ HTTP давхаргын `CurrentUser` дүрслэлийг handler дотор
 - **ORM:** GORM v2 (`gorm.io/gorm`, `gorm.io/driver/postgres`)
 - **Database:** PostgreSQL
 - **Migrations:** `migrations/` доторх SQL файлууд + idempotent `AutoMigrate`
+- **Row-Level Security:** `users` дээр асаалттай + FORCE (доор үз)
 - **Tracing:** `gorm.io/plugin/opentelemetry/tracing`
+
+### Row-Level Security (RLS)
+
+`migrations/6_enable_rls_users.up.sql` нь `users` хүснэгт дээр RLS-г асааж,
+self/admin/service загварыг өгөгдлийн сангаар өөрөөр нь хэрэгжүүлдэг — repository
+аль хэдийн бичдэг `WHERE` нөхцлүүдийн ард байрлах хоёр дахь хамгаалалтын шугам.
+
+| Үүрэг (`app.user_role`) | Харах / өөрчлөх боломж |
+|-------------------------|------------------------|
+| `service`               | бүх мөр — нэвтрэхээс өмнөх урсгалууд (login хайлт, бүртгэл, OTP идэвхжүүлэлт, нууц үг сэргээх) болон seeder ашиглана |
+| `admin`                 | бүх мөр |
+| `user`                  | зөвхөн `id` нь `app.user_id`-тэй таарах мөр |
+| *(тавиагүй / хоосон)*   | юу ч үгүй — **fail-closed** |
+
+App нь хүснэгтийн **эзэн (owner)** болж холбогддог бөгөөд эзэд нь энгийн RLS-г
+тойрдог тул migration нь эзнийг ч бодлогод захируулахаар
+`ALTER TABLE users FORCE ROW LEVEL SECURITY`-г ашиглана.
+
+Identity нь `context.Context`-д (`internal/datasources/rls`) зөөгдөж, query-ийн
+гүнд биш итгэлцлийн хил дээр тогтоогдоно:
+
+- **Нэвтрэхээс өмнөх auth урсгалууд** (`usecases/auth`: login, register, OTP,
+  refresh, reset) context-г `service` гэж тэмдэглэнэ; `ChangePassword` нь
+  дуудагчийн өөрийнх нь id-д `user` гэж тэмдэглэнэ (least privilege).
+- **Баталгаажсан route-ууд** — `middleware.auth.go` нь JWT-г шалгасны дараа
+  request context-д `user`/`admin` identity суулгадаг тул `/users/*` handler-ууд
+  үүнийг автоматаар авч явна.
+
+Repository-ийн `withRLS` туслах нь дараа нь тэр identity-г транзакц бүрт нийтэлдэг
+([Repository давхарга](#4-repository-давхарга)-г үз). **Олон-түрээслэгч (multi-tenant)
+болгох:** шинэ хүснэгтүүдэд `tenant_id` нэмж, түүнийг `app.tenant_id` GUC-тай
+харьцуулсан бодлого нэмж, tenant-г `rls.Identity`-д зөөнө.
 
 ### Холболтын удирдлага (Connection Management)
 
@@ -277,6 +324,7 @@ sqlDB.SetConnMaxLifetime(cfg.MaxLifetime) // DB_CONN_MAX_LIFE_MINS (default 15)
 | Password hashing  | bcrypt (cost 10–31, default 12)      | `internal/business/domain/domain.users.go`|
 | SQL injection     | GORM (parameterized)                 | `internal/datasources/repositories/`      |
 | Login lockout     | brute-force attempt cap in Redis     | `internal/business/usecases/auth/`        |
+| Row-Level Security| `users` дээр FORCE RLS, `SET LOCAL` GUC-аар self/admin/service | `migrations/6_*`, `internal/datasources/rls` |
 
 ## API дизайн (API Design)
 

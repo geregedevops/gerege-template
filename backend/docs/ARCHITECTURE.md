@@ -182,6 +182,20 @@ Key features: GORM queries via `db.WithContext(ctx)`, soft delete via
 `INSERT … RETURNING` for a single round-trip, duplicate keys surface as
 `apperror.Conflict` (via GORM `TranslateError`).
 
+Every query runs inside `withRLS(ctx, fn)` (`users.postgres.go`), which opens a
+transaction and publishes the caller's identity to Postgres Row-Level Security
+as two session GUCs before running the query:
+
+```go
+SELECT set_config('app.user_id', ?, true),   -- the authenticated user's UUID
+       set_config('app.user_role', ?, true)  -- 'service' | 'admin' | 'user'
+```
+
+`set_config(..., true)` is `SET LOCAL` — scoped to the transaction — so a pooled
+connection never leaks one request's identity into the next. The identity comes
+from `rls.FromContext(ctx)`; if it is absent the GUCs are empty and the policies
+deny every row (fail-closed). See [Database → Row-Level Security](#row-level-security-rls).
+
 ### 5. Domain Layer
 
 **Location:** `internal/business/domain/`
@@ -231,7 +245,40 @@ HTTP-layer `CurrentUser` view is read with
 - **ORM:** GORM v2 (`gorm.io/gorm`, `gorm.io/driver/postgres`)
 - **Database:** PostgreSQL
 - **Migrations:** SQL files in `migrations/` + idempotent `AutoMigrate`
+- **Row-Level Security:** enabled + FORCED on `users` (see below)
 - **Tracing:** `gorm.io/plugin/opentelemetry/tracing`
+
+### Row-Level Security (RLS)
+
+`migrations/6_enable_rls_users.up.sql` turns RLS on for the `users` table and
+defines a self/admin/service model enforced by the database itself — a second
+line of defence behind the `WHERE` clauses the repository already writes.
+
+| Role (`app.user_role`) | Can see / modify |
+|------------------------|------------------|
+| `service`              | every row — used by pre-auth flows (login lookup, registration, OTP activation, password reset) and the seeder |
+| `admin`                | every row |
+| `user`                 | only the row whose `id` equals `app.user_id` |
+| *(unset / empty)*      | nothing — **fail-closed** |
+
+The app connects as the table **owner**, and owners bypass ordinary RLS, so the
+migration uses `ALTER TABLE users FORCE ROW LEVEL SECURITY` to subject the owner
+to the policies too.
+
+Identity is carried in `context.Context` (`internal/datasources/rls`) and set at
+the trust boundary, not deep in the query:
+
+- **Pre-auth auth flows** (`usecases/auth`: login, register, OTP, refresh, reset)
+  mark the context `service`; `ChangePassword` marks it `user` for the caller's
+  own id (least privilege).
+- **Authenticated routes** — `middleware.auth.go` injects `user`/`admin` identity
+  into the request context after validating the JWT, so `/users/*` handlers carry
+  it automatically.
+
+The repository's `withRLS` helper then publishes that identity per-transaction
+(see [Repository Layer](#4-repository-layer)). **To extend to multi-tenancy:** add
+`tenant_id` to new tables, add a policy comparing it to a `app.tenant_id` GUC, and
+carry the tenant in `rls.Identity`.
 
 ### Connection Management
 
@@ -275,6 +322,7 @@ sqlDB.SetConnMaxLifetime(cfg.MaxLifetime) // DB_CONN_MAX_LIFE_MINS (default 15)
 | Password hashing  | bcrypt (cost 10–31, default 12)      | `internal/business/domain/domain.users.go`|
 | SQL injection     | GORM (parameterized)                 | `internal/datasources/repositories/`      |
 | Login lockout     | brute-force attempt cap in Redis     | `internal/business/usecases/auth/`        |
+| Row-Level Security| FORCE RLS on `users`, self/admin/service via `SET LOCAL` GUCs | `migrations/6_*`, `internal/datasources/rls` |
 
 ## API Design
 

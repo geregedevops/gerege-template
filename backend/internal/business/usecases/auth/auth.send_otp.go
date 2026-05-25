@@ -25,6 +25,8 @@ func (uc *usecase) SendOTP(ctx context.Context, req SendOTPRequest) (err error) 
 		funcName    = "SendOTP"
 		fileName    = "auth.send_otp.go"
 	)
+	// RLS: нэвтрэхээс өмнөх email хайлт тул DB рүү "service" үүргээр хандана.
+	ctx = asService(ctx)
 	startTime := time.Now()
 	email := domain.NormalizeEmail(req.Email)
 

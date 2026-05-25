@@ -10,6 +10,8 @@ import (
 	"templatev27/internal/datasources/records"
 	repointerface "templatev27/internal/datasources/repositories/interface"
 	"templatev27/pkg/logger"
+
+	"gorm.io/gorm"
 )
 
 // hardLimit нь List хуудасны хэмжээг хязгаарладаг тул буруу ажиллаж
@@ -33,24 +35,27 @@ func (r *postgreUserRepository) List(ctx context.Context, filter repointerface.U
 	}
 
 	// Query-г GORM-ийн гинжлэгдэх нөхцлүүдээр бүтээ — утга бүр parameter
-	// болж холбогддог, хэзээ ч SQL мөр рүү залгагддаггүй.
-	tx := r.conn.WithContext(ctx).Model(&records.Users{})
-	if filter.IncludeDeleted {
-		// deleted_at IS NOT NULL мөрүүдийг оруулахын тулд soft-delete
-		// scope-г алгасна.
-		tx = tx.Unscoped()
-	}
-	// IncludeDeleted нь false үед gorm.DeletedAt нь deleted_at IS NULL
-	// предикатыг автоматаар нэмдэг.
-	if filter.RoleID != 0 {
-		tx = tx.Where("role_id = ?", filter.RoleID)
-	}
-	if filter.ActiveOnly {
-		tx = tx.Where("active = ?", true)
-	}
-
+	// болж холбогддог, хэзээ ч SQL мөр рүү залгагддаггүй. withRLS нь
+	// query-г транзакцид боож, context дахь identity-г RLS GUC болгоно.
 	var rows []records.Users
-	if err := tx.Order("created_at DESC").Limit(limit).Offset(offset).Find(&rows).Error; err != nil {
+	err := r.withRLS(ctx, func(tx *gorm.DB) error {
+		q := tx.Model(&records.Users{})
+		if filter.IncludeDeleted {
+			// deleted_at IS NOT NULL мөрүүдийг оруулахын тулд soft-delete
+			// scope-г алгасна.
+			q = q.Unscoped()
+		}
+		// IncludeDeleted нь false үед gorm.DeletedAt нь deleted_at IS NULL
+		// предикатыг автоматаар нэмдэг.
+		if filter.RoleID != 0 {
+			q = q.Where("role_id = ?", filter.RoleID)
+		}
+		if filter.ActiveOnly {
+			q = q.Where("active = ?", true)
+		}
+		return q.Order("created_at DESC").Limit(limit).Offset(offset).Find(&rows).Error
+	})
+	if err != nil {
 		logger.ErrorWithContext(ctx, "Failed to list users", logger.Fields{
 			"repository": repositoryName,
 			"method":     funcName,

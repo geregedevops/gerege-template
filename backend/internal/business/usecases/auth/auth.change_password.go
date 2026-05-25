@@ -30,6 +30,9 @@ func (uc *usecase) ChangePassword(ctx context.Context, req ChangePasswordRequest
 	currentPassword := req.CurrentPassword
 	newPassword := req.NewPassword
 
+	// RLS: баталгаажсан хэрэглэгч зөвхөн ӨӨРИЙН мөрд хандана (least-privilege).
+	ctx = asUser(ctx, userID)
+
 	logger.InfoWithContext(ctx, fmt.Sprintf("Upper %s", funcName), logger.Fields{
 		"usecase": usecaseName,
 		"method":  funcName,

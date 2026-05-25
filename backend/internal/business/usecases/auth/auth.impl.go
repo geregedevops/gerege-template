@@ -10,6 +10,7 @@ import (
 
 	"templatev27/internal/business/usecases/users"
 	"templatev27/internal/datasources/caches"
+	"templatev27/internal/datasources/rls"
 	"templatev27/pkg/jwt"
 	"templatev27/pkg/logger"
 	"templatev27/pkg/mailer"
@@ -38,6 +39,20 @@ func NewUsecase(usersUC users.Usecase, jwtService jwt.JWTService, otpMailer mail
 		cfg:        cfg,
 	}
 }
+
+// asService нь auth-ийн нэвтрэхээс ӨМНӨХ урсгалуудад (login дахь email
+// хайлт, register дахь INSERT, OTP-ээр идэвхжүүлэх, нууц үг сэргээх)
+// зориулж context-г RLS-ийн "service" үүргээр тэмдэглэнэ. Эдгээр урсгал
+// нь хараахан баталгаажаагүй хэрэглэгчийн мөрд хандах ёстой тул
+// "зөвхөн өөрийн мөр" RLS бодлогоор хязгаарлагдаж болохгүй. Identity-г
+// usecase давхаргад тогтоосноор HTTP middleware-ийн утсыг (wiring)
+// дагадаггүй болж, шууд дуудагддаг тестүүд ч мөн ажиллана.
+func asService(ctx context.Context) context.Context { return rls.WithService(ctx) }
+
+// asUser нь баталгаажсан хэрэглэгчийн өөрийнх нь мөрд (least-privilege)
+// хандах эрхээр context-г тэмдэглэнэ — нууц үг солих зэрэг хэрэглэгч
+// өөрийнхөө бичлэг дээр хийдэг үйлдлүүдэд.
+func asUser(ctx context.Context, userID string) context.Context { return rls.WithUser(ctx, userID) }
 
 // dummyBcryptHash нь Login доторх "хэрэглэгч олдсонгүй" болон "буруу нууц үг"
 // гэсэн салаануудын хоорондох цаг хугацааны зөрүүг далдлахад ашигладаг урьдчилан

@@ -10,6 +10,8 @@ import (
 	"templatev27/internal/business/domain"
 	"templatev27/internal/datasources/records"
 	"templatev27/pkg/logger"
+
+	"gorm.io/gorm"
 )
 
 func (r *postgreUserRepository) UpdatePassword(ctx context.Context, inDom *domain.User) error {
@@ -23,27 +25,31 @@ func (r *postgreUserRepository) UpdatePassword(ctx context.Context, inDom *domai
 	// gorm.DeletedAt нь UPDATE-г deleted_at IS NULL мөрүүдээр хязгаарлана.
 	// Тодорхой баганын map нь бичилтийг анхны UPDATE-ийн хүрсэн яг гурван
 	// баганаар хязгаарладаг.
-	res := r.conn.WithContext(ctx).
-		Model(&records.Users{}).
-		Where("id = ?", userRecord.Id).
-		Updates(map[string]interface{}{
-			"password":            userRecord.Password,
-			"password_changed_at": userRecord.PasswordChangedAt,
-			"updated_at":          userRecord.UpdatedAt,
-		})
-	if res.Error != nil {
+	var rowsAffected int64
+	err := r.withRLS(ctx, func(tx *gorm.DB) error {
+		res := tx.Model(&records.Users{}).
+			Where("id = ?", userRecord.Id).
+			Updates(map[string]interface{}{
+				"password":            userRecord.Password,
+				"password_changed_at": userRecord.PasswordChangedAt,
+				"updated_at":          userRecord.UpdatedAt,
+			})
+		rowsAffected = res.RowsAffected
+		return res.Error
+	})
+	if err != nil {
 		logger.ErrorWithContext(ctx, "Failed to update user password", logger.Fields{
 			"repository": repositoryName,
 			"method":     funcName,
 			"query":      queryName,
 			"file":       fileName,
-			"error":      res.Error.Error(),
+			"error":      err.Error(),
 			"table":      "users",
 			"user_id":    userRecord.Id,
 		})
-		return res.Error
+		return err
 	}
-	if res.RowsAffected == 0 {
+	if rowsAffected == 0 {
 		return apperror.NotFound("user not found")
 	}
 	return nil
