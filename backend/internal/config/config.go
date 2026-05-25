@@ -63,6 +63,15 @@ type Config struct {
 	// proxy ард ажиллах үед энэ нь шаардлагатай — өөрөөр бол rate limit,
 	// audit, access log бүгд proxy-ийн ганц IP харна.
 	TrustedProxies string `mapstructure:"TRUSTED_PROXIES"`
+
+	// GeregeCloud Verify (verify.gecloud.mn) — OTP илгээх/шалгах ажлыг
+	// гадаад үйлчилгээнд шилжүүлдэг. VerifyAPIKey хоосон бол OTP клиент
+	// бүтэх боловч дуудлага бүр "missing api key" алдаа буцаах тул
+	// SendOTP/VerifyOTP урсгал тэр даруй амжилтгүй болно — operator-д
+	// чимээгүй ажиллахын оронд тодорхой сэрэмжлүүлэг өгөх боллоо.
+	VerifyAPIBase string `mapstructure:"VERIFY_API_BASE"`
+	VerifyAPIKey  string `mapstructure:"VERIFY_API_KEY"`
+	VerifyChannel string `mapstructure:"VERIFY_CHANNEL"`
 }
 
 // TrustedProxiesList нь TRUSTED_PROXIES-г таслалаар тусгаарлан, цэвэрлэсэн
@@ -236,6 +245,9 @@ func applyDefaults() {
 	}
 	if AppConfig.JWTRefreshExpired == 0 {
 		AppConfig.JWTRefreshExpired = 7
+	}
+	if AppConfig.VerifyChannel == "" {
+		AppConfig.VerifyChannel = "email"
 	}
 	// OTel-ийн sample ratio нь зөвхөн exporter тохируулагдсан БА оператор
 	// ratio-г тодорхой зааж өгөөгүй үед 1.0 утгыг анхдагчаар авна. Exporter

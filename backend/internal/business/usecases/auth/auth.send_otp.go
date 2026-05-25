@@ -11,14 +11,16 @@ import (
 	"templatev27/internal/apperror"
 	"templatev27/internal/business/domain"
 	"templatev27/internal/business/usecases/users"
-	"templatev27/pkg/helpers"
 	"templatev27/pkg/logger"
 	"templatev27/pkg/observability"
 )
 
-// SendOTP нь 6 оронтой код үүсгэж, TTL-тэйгээр Redis-д хадгалж, async mailer-ээр
-// дамжуулан email-ийг дараалалд оруулна. HTTP хариу нь бодит SMTP хүргэлт дээр
-// биш, дараалалд оруулсан үед буцдаг.
+// SendOTP нь GeregeCloud Verify (verify.gecloud.mn) API-руу OTP илгээх
+// хүсэлт явуулж, буцсан request_id-г Redis-д хадгална (TTL = OTPTTL).
+// VerifyOTP дараа нь тэр request_id-г хэрэглэгчийн оруулсан кодтой тулгаж
+// шалгана. Дотооддоо код үүсгэх / SMTP-ээр илгээх / Redis-д код хадгалах
+// ажлыг алсын үйлчилгээ хариуцдаг тул template нь зөвхөн request_id-ийн
+// амьдрах хугацааг л хянана.
 func (uc *usecase) SendOTP(ctx context.Context, req SendOTPRequest) (err error) {
 	const (
 		usecaseName = "auth"
@@ -76,58 +78,58 @@ func (uc *usecase) SendOTP(ctx context.Context, req SendOTPRequest) (err error) 
 		return err
 	}
 
-	code, otpErr := helpers.GenerateOTPCode(6)
-	if otpErr != nil {
-		err = apperror.InternalCause(fmt.Errorf("generate otp: %w", otpErr))
-		logger.ErrorWithContext(ctx, "Send OTP failed: code generation error", logger.Fields{
+	if uc.verify == nil {
+		err = apperror.InternalCause(fmt.Errorf("verify sender is not configured"))
+		logger.ErrorWithContext(ctx, "Send OTP failed: verify sender missing", logger.Fields{
 			"usecase": usecaseName,
 			"method":  funcName,
 			"file":    fileName,
-			"step":    "generate_otp_code",
-			"error":   otpErr.Error(),
+			"step":    "verify_sender_check",
+			"error":   err.Error(),
 			"email":   email,
 		})
 		return err
 	}
 
-	// Кодыг ЭХЛЭЭД Redis-д тохируулсан OTPTTL-тэйгээр атомар хадгална
-	// (SET ... EX <ttl>), дараа нь имэйлийг дараалалд оруулна. Set + Expire-ийн
-	// 2 алхамтай хослос ялгаатай нь Expire алдах race гарахгүй — TTL заасан
-	// утгаар нь л суух эсвэл огт суухгүй. Урьд нь имэйлийг эхэлж дараалалд
-	// оруулдаг байсан тул Redis амжилтгүй болоход (non-fatal, логлогддог)
-	// хэрэглэгчид баталгаажуулах боломжгүй код хүрдэг байв.
-	otpKey := UserOTPKey(email)
-	if cacheErr := uc.redisCache.SetWithTTL(ctx, otpKey, code, uc.cfg.OTPTTL); cacheErr != nil {
-		observability.ObserveCacheOp("redis", "set", "error")
-		err = apperror.InternalCause(fmt.Errorf("persist otp: %w", cacheErr))
-		logger.ErrorWithContext(ctx, "Send OTP failed: persist OTP code error", logger.Fields{
+	// Алсаас OTP илгээх — verify.gecloud.mn нь кодыг өөрөө үүсгэж, bcrypt-аар
+	// hash-аар хадгалж, brute-force-ийг хязгаарладаг. Бид зөвхөн request_id-г л
+	// хадгална. Илгээх алдаа гарвал Redis-д юу ч бичихгүй — хуучирсан
+	// request_id-р VerifyOTP андуурахгүйн тулд.
+	requestID, sendErr := uc.verify.Send(ctx, email)
+	if sendErr != nil {
+		observability.ObserveMailerOp("queue_full")
+		err = apperror.InternalCause(fmt.Errorf("send otp: %w", sendErr))
+		logger.ErrorWithContext(ctx, "Send OTP failed: verify api error", logger.Fields{
 			"usecase": usecaseName,
 			"method":  funcName,
 			"file":    fileName,
-			"step":    "redis_set_otp",
+			"step":    "verify_send",
+			"error":   sendErr.Error(),
+			"email":   email,
+		})
+		return err
+	}
+
+	// request_id-г атомар SET ... EX <OTPTTL>-ээр хадгална. VerifyOTP нь
+	// энэ түлхүүрийг GetDel-ээр уншиж устгаснаар нэг удаагийн semantic
+	// баталгаажна (зэрэгцээ хоёр оролдлого ижил request_id-г replay
+	// хийхээс сэргийлнэ).
+	otpKey := UserOTPKey(email)
+	if cacheErr := uc.redisCache.SetWithTTL(ctx, otpKey, requestID, uc.cfg.OTPTTL); cacheErr != nil {
+		observability.ObserveCacheOp("redis", "set", "error")
+		err = apperror.InternalCause(fmt.Errorf("persist verify request id: %w", cacheErr))
+		logger.ErrorWithContext(ctx, "Send OTP failed: persist request_id error", logger.Fields{
+			"usecase": usecaseName,
+			"method":  funcName,
+			"file":    fileName,
+			"step":    "redis_set_request_id",
 			"error":   cacheErr.Error(),
 			"email":   email,
 		})
 		return err
 	}
 	observability.ObserveCacheOp("redis", "set", "ok")
-
-	if mailErr := uc.mailer.SendOTP(ctx, code, email); mailErr != nil {
-		observability.ObserveMailerOp("queue_full")
-		// Имэйл дараалалд орж чадаагүй тул хадгалсан кодыг устга — ингэснээр
-		// хэзээ ч хүргэгдээгүй кодын дугаар Redis-д өнчирч үлдэхгүй.
-		_ = uc.redisCache.Del(ctx, otpKey)
-		err = apperror.InternalCause(fmt.Errorf("send otp: %w", mailErr))
-		logger.ErrorWithContext(ctx, "Send OTP failed: mailer enqueue error", logger.Fields{
-			"usecase": usecaseName,
-			"method":  funcName,
-			"file":    fileName,
-			"step":    "mailer_send_otp",
-			"error":   mailErr.Error(),
-			"email":   email,
-		})
-		return err
-	}
+	observability.ObserveMailerOp("sent")
 
 	_ = uc.redisCache.Del(ctx, OTPAttemptsKey(email))
 

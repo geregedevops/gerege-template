@@ -34,6 +34,7 @@ import (
 	"templatev27/pkg/logger"
 	"templatev27/pkg/mailer"
 	"templatev27/pkg/observability"
+	"templatev27/pkg/verify"
 )
 
 const serviceName = "gerege-template"
@@ -134,7 +135,16 @@ func NewApp() (*App, error) {
 	usersUC := users.NewUsecase(userRepo, ristrettoCache, users.Config{
 		BcryptCost: config.AppConfig.BcryptCost,
 	})
-	authUC := auth.NewUsecase(usersUC, jwtService, asyncMailer, redisCache, auth.Config{
+	// GeregeCloud Verify клиент — OTP илгээх/шалгах ажлыг алсын үйлчилгээнд
+	// шилжүүлнэ. VerifyAPIKey хоосон бол клиент бүтэх боловч дуудлага бүр
+	// "missing api key" алдаа буцаах тул operator-д чимээгүй буруу тохиргоо
+	// үлдэхгүй.
+	verifyClient := verify.NewClient(
+		config.AppConfig.VerifyAPIBase,
+		config.AppConfig.VerifyAPIKey,
+		config.AppConfig.VerifyChannel,
+	)
+	authUC := auth.NewUsecase(usersUC, jwtService, asyncMailer, verifyClient, redisCache, auth.Config{
 		OTPMaxAttempts:    config.AppConfig.OTPMaxAttempts,
 		OTPTTL:            time.Duration(config.AppConfig.REDISExpired) * time.Minute,
 		PasswordResetTTL:  30 * time.Minute,

@@ -28,16 +28,16 @@ func TestSendOTP(t *testing.T) {
 		wantErrType apperror.ErrorType
 	}{
 		{
-			name:  "happy path mails OTP, sets cache, resets attempt counter",
+			name:  "happy path calls verify.Send, persists request_id, resets attempt counter",
 			email: "patrick@example.com",
 			setup: func(f *fixture) {
 				user := activeUser(t)
 				user.Active = false // SendOTP нь зөвхөн идэвхгүй бүртгэлд хүчинтэй
 				f.users.On("GetByEmail", mock.Anything, users.GetByEmailRequest{Email: "patrick@example.com"}).Return(users.GetByEmailResponse{User: user}, nil).Once()
-				// Код эхлээд Redis-д тохируулсан OTPTTL-тэйгээр атомар хадгалагдаж,
-				// зөвхөн дараа нь имэйл дараалалд орно.
-				f.redis.On("SetWithTTL", mock.Anything, "user_otp:patrick@example.com", mock.AnythingOfType("string"), mock.AnythingOfType("time.Duration")).Return(nil).Once()
-				f.mailer.On("SendOTP", mock.Anything, mock.AnythingOfType("string"), "patrick@example.com").Return(nil).Once()
+				// verify.gecloud.mn /send нь request_id буцаана; үүнийг Redis-д
+				// OTPTTL-тэйгээр атомар хадгална.
+				f.verify.On("Send", mock.Anything, "patrick@example.com").Return("clv_abc123", nil).Once()
+				f.redis.On("SetWithTTL", mock.Anything, "user_otp:patrick@example.com", "clv_abc123", mock.AnythingOfType("time.Duration")).Return(nil).Once()
 				f.redis.On("Del", mock.Anything, "otp_attempts:patrick@example.com").Return(nil).Once()
 			},
 		},

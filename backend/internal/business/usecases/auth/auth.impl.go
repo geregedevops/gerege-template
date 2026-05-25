@@ -14,6 +14,7 @@ import (
 	"templatev27/pkg/jwt"
 	"templatev27/pkg/logger"
 	"templatev27/pkg/mailer"
+	"templatev27/pkg/verify"
 )
 
 // usecase нь хамаарлууд болон method хоорондын төлөвийг агуулдаг. Нэг зан
@@ -23,6 +24,7 @@ type usecase struct {
 	users      users.Usecase
 	jwtService jwt.JWTService
 	mailer     mailer.OTPMailer
+	verify     verify.Sender
 	redisCache caches.RedisCache
 	cfg        Config
 	// dummyHash нь Login доторх "хэрэглэгч олдсонгүй" болон "буруу нууц үг"
@@ -41,8 +43,11 @@ const fallbackDummyHash = "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZd
 
 // NewUsecase нь auth урсгалуудыг холбодог. Энэ нь identity унших / бичихэд
 // users.Usecase-ээс (User bounded-context-ийн оролтын порт), мөн auth-д
-// тусгайлсан хэсгүүдэд дэд бүтцээс (jwt, redis, mailer) хамаардаг.
-func NewUsecase(usersUC users.Usecase, jwtService jwt.JWTService, otpMailer mailer.OTPMailer, redisCache caches.RedisCache, cfg Config) Usecase {
+// тусгайлсан хэсгүүдэд дэд бүтцээс (jwt, redis, mailer, verify) хамаардаг.
+// verifySender нь OTP send/check ажлыг GeregeCloud Verify-руу шилжүүлэхэд
+// ашиглагдана; nil дамжуулсан тохиолдолд SendOTP/VerifyOTP усецase-ууд тэр
+// даруй амжилтгүй буцах тул operator-д тохиргооны цоорхойг ил болгоно.
+func NewUsecase(usersUC users.Usecase, jwtService jwt.JWTService, otpMailer mailer.OTPMailer, verifySender verify.Sender, redisCache caches.RedisCache, cfg Config) Usecase {
 	cost := cfg.BcryptCost
 	if cost < bcrypt.MinCost || cost > bcrypt.MaxCost {
 		cost = bcrypt.DefaultCost
@@ -56,6 +61,7 @@ func NewUsecase(usersUC users.Usecase, jwtService jwt.JWTService, otpMailer mail
 		users:      usersUC,
 		jwtService: jwtService,
 		mailer:     otpMailer,
+		verify:     verifySender,
 		redisCache: redisCache,
 		cfg:        cfg,
 		dummyHash:  dummyHash,
