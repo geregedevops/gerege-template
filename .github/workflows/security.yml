@@ -1,0 +1,61 @@
+name: Security
+
+on:
+  schedule:
+    - cron: "0 9 * * *" # Daily 9am UTC — vuln DB шинэчлэлтийг тоодог.
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  govulncheck:
+    name: Go Vulnerability Check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - name: Run govulncheck
+        run: govulncheck ./...
+
+  gosec:
+    name: Go Static Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+      # gosec catches a different class of issues than govulncheck:
+      # govulncheck reads vuln DB → flags vulnerable deps; gosec reads
+      # source → flags antipatterns (hardcoded creds, weak crypto,
+      # SQL injection patterns, unsafe file perms, etc.).
+      - name: Run gosec
+        uses: securego/gosec@master
+        with:
+          # G104 (errcheck) is noisy and golangci-lint already covers
+          # it. Vendor is third-party code — out of scope.
+          args: "-exclude=G104 -exclude-dir=vendor ./backend/..."
+
+  npm-audit:
+    name: Frontend npm audit
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20.18"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Audit production deps
+        # Production-д ачаалагдах deps дээр л фокус — devDeps-ийн уст
+        # advisory нь template хэрэглэгчийн ажилд нөлөөлөх магадлал бага.
+        run: npm audit --omit=dev --audit-level=high

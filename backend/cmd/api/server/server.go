@@ -114,16 +114,27 @@ func NewApp() (*App, error) {
 	healthHandler := V1Handler.NewHealthHandler(conn, redisCache.Client())
 	app.Get("/health", healthHandler.Health)
 	app.Get("/ready", healthHandler.Ready)
+	// /metrics, /swagger/doc.json нь production-д systeметрик ба API
+	// гадаргууг ил гаргадаг тул өндөр эрсдэлтэй. Гате-чин (gate) middleware:
+	//   - dev орчинд token-гүй бол ил байна (`make serve` UX-ийг хадгална);
+	//   - prod орчинд OBSERVABILITY_TOKEN хоосон бол 404 буцаана
+	//     (endpoint огт байхгүйгээр харагдана);
+	//   - prod орчинд OBSERVABILITY_TOKEN тохируулсан бол "Authorization:
+	//     Bearer <token>" нийлэхэд л зөвшөөрнө.
+	obsGate := middlewares.ObservabilityGate(
+		config.AppConfig.Environment == constants.EnvironmentProduction,
+		config.AppConfig.ObservabilityToken,
+	)
 	// /metrics — Prometheus exposition. promhttp нь net/http handler бөгөөд
 	// adaptor middleware-ээр дамжуулан Fiber руу холбогддог.
-	app.Get("/metrics", adaptor.HTTPHandler(promhttp.Handler()))
+	app.Get("/metrics", obsGate, adaptor.HTTPHandler(promhttp.Handler()))
 	// OpenAPI тодорхойлолт — `make swag` нь godoc annotation-уудаас docs/
 	// багцыг үүсгэдэг. gofiber/swagger нь Fiber v2-д зориулагдсан тул
 	// (handler нь *fiber.Ctx авдаг) Fiber v3-д runtime panic үүсгэдэг —
 	// иймд spec-ийг Fiber v3 native-аар JSON хэлбэрээр үйлчилнэ. Уг JSON-ыг
 	// Swagger UI / Postman / VS Code-д шууд ачаалж болно. (Суулгасан
 	// интерактив UI хэрэгтэй бол Fiber v3-тэй нийцэх swagger handler нэмнэ.)
-	app.Get("/swagger/doc.json", func(c fiber.Ctx) error {
+	app.Get("/swagger/doc.json", obsGate, func(c fiber.Ctx) error {
 		c.Set("Content-Type", "application/json")
 		return c.SendString(docs.SwaggerInfo.ReadDoc())
 	})
