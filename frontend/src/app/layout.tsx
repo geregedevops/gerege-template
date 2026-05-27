@@ -1,4 +1,5 @@
 import React from 'react';
+import { headers } from 'next/headers';
 import { Inter, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 
@@ -32,6 +33,10 @@ export const metadata = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  // CSP nonce middleware-аас "x-nonce" request header-аар ирнэ. Inline эсвэл
+  // same-origin script (theme-bootstrap.js) дээр энэ nonce-ийг тавьснаар
+  // 'unsafe-inline' хэрэггүй CSP-д ажиллана.
+  const nonce = headers().get('x-nonce') ?? undefined;
   return (
     <html
       lang="mn"
@@ -49,7 +54,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             body зурахаас ӨМНӨ ажиллах ёстой тул async/defer хийхгүй (эс бөгөөс
             загвар анивчина). Иймд no-sync-scripts дүрмийг энд зориуд унтраав. */}
         {/* eslint-disable-next-line @next/next/no-sync-scripts */}
-        <script src="/theme-bootstrap.js" />
+        <script src="/theme-bootstrap.js" nonce={nonce} />
       </head>
       <body>{children}</body>
     </html>

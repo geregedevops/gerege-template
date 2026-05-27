@@ -1,0 +1,22 @@
+# node_modules — let `npm ci` rebuild deterministically inside the image
+# instead of trusting the host's tree.
+node_modules
+
+# Next.js build outputs — rebuilt inside the image.
+.next
+out
+
+# Secrets — guard against accidental inclusion.
+*.env
+*.env.*
+!*.env.example
+
+# Local tool state
+.git
+.github
+.idea
+.vscode
+
+# Misc
+npm-debug.log
+.DS_Store

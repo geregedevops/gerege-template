@@ -1,23 +1,7 @@
 /** @type {import('next').NextConfig} */
 
-// Content-Security-Policy: бодит, ажиллах боломжтой бодлого.
-// - script-src: 'self' нь /theme-bootstrap.js (same-origin) болон Next.js-ийн
-//   chunk-уудыг хамарна. 'unsafe-inline' нь Next.js-ийн inline bootstrap
-//   script-уудад (мөн зарим inline) шаардлагатай pragmatic dev default —
-//   production-д nonce руу шилжих нь зохистой.
-// - style-src: апп `style=` inline attribute ашигладаг тул 'unsafe-inline' хэрэгтэй.
-// - connect-src 'self': browser зөвхөн same-origin BFF (/api/*) рүү хандана.
-const CSP = [
-  "default-src 'self'",
-  "script-src 'self' 'unsafe-inline'",
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data:",
-  "font-src 'self' data:",
-  "connect-src 'self'",
-  "frame-ancestors 'none'",
-  "base-uri 'self'",
-  "form-action 'self'",
-].join('; ');
+// Content-Security-Policy-г middleware.ts-ээс per-request nonce-тэй өгнө.
+// Энд зөвхөн CSP-аас бусад статик security header-уудыг хариуцна.
 
 const nextConfig = {
   reactStrictMode: true,
@@ -34,7 +18,8 @@ const nextConfig = {
         key: 'Permissions-Policy',
         value: 'camera=(), microphone=(), geolocation=()',
       },
-      { key: 'Content-Security-Policy', value: CSP },
+      // Content-Security-Policy — middleware.ts дотор per-request nonce-тэй
+      // тохируулагдана. Энд static header болгож тавихгүй (nonce-гүй болно).
     ];
 
     // HSTS-ийг зөвхөн production-д илгээнэ — dev дээр http тул HSTS тохиромжгүй.

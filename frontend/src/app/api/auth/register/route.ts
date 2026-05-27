@@ -1,5 +1,5 @@
 import { backendFetch } from '@/lib/api';
-import { readJson, toClientResponse, checkOrigin } from '@/lib/bff';
+import { readJson, toClientResponse, checkOrigin, requireFields } from '@/lib/bff';
 import type { BackendUser } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -10,13 +10,21 @@ export async function POST(req: Request) {
   const bad = checkOrigin(req);
   if (bad) return bad;
 
-  const { username, email, password } = await readJson<{
-    username?: string; email?: string; password?: string;
+  const body = await readJson<{
+    username?: string;
+    email?: string;
+    password?: string;
   }>(req);
+  const missing = requireFields(body, ['username', 'email', 'password']);
+  if (missing) return missing;
 
   const result = await backendFetch<BackendUser>('/auth/register', {
     method: 'POST',
-    body: JSON.stringify({ username, email, password }),
+    body: JSON.stringify({
+      username: body.username,
+      email: body.email,
+      password: body.password,
+    }),
   });
 
   return toClientResponse(result);
