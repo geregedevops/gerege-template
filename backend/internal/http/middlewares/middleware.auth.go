@@ -8,9 +8,9 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
+	"templatev27/internal/business/ports"
 	"templatev27/internal/business/usecases/auth"
 	"templatev27/internal/constants"
-	"templatev27/internal/datasources/caches"
 	"templatev27/internal/datasources/rls"
 	V1Handler "templatev27/internal/http/handlers/v1"
 	"templatev27/pkg/jwt"
@@ -19,7 +19,7 @@ import (
 
 type AuthMiddleware struct {
 	jwtService jwt.JWTService
-	redisCache caches.RedisCache
+	redisCache ports.Cache
 	isAdmin    bool
 }
 
@@ -27,7 +27,7 @@ type AuthMiddleware struct {
 // (rotation) хязгаарыг хүндэтгэж, задлан шинжилсэн claim-уудыг хүсэлтийн
 // Locals-д хадгалдаг Fiber handler буцаана. Хариуг буцааж 401-ээр богино
 // холбодог (гинжийг таслах Fiber-ийн арга барил).
-func NewAuthMiddleware(jwtService jwt.JWTService, redisCache caches.RedisCache, isAdmin bool) fiber.Handler {
+func NewAuthMiddleware(jwtService jwt.JWTService, redisCache ports.Cache, isAdmin bool) fiber.Handler {
 	return (&AuthMiddleware{
 		jwtService: jwtService,
 		redisCache: redisCache,

@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
+	"templatev27/internal/business/ports"
 	"templatev27/internal/business/usecases/users"
-	"templatev27/internal/datasources/caches"
 	"templatev27/internal/datasources/rls"
 	"templatev27/pkg/jwt"
 	"templatev27/pkg/logger"
@@ -26,7 +26,7 @@ type usecase struct {
 	jwtService jwt.JWTService
 	mailer     mailer.OTPMailer
 	verify     verify.Sender
-	redisCache caches.RedisCache
+	redisCache ports.Cache
 	cfg        Config
 	// dummyHash нь Login доторх "хэрэглэгч олдсонгүй" болон "буруу нууц үг"
 	// гэсэн салаануудын хоорондох цаг хугацааны зөрүүг далдлахад ашигладаг
@@ -48,7 +48,7 @@ const fallbackDummyHash = "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZd
 // verifySender нь OTP send/check ажлыг GeregeCloud Verify-руу шилжүүлэхэд
 // ашиглагдана; nil дамжуулсан тохиолдолд SendOTP/VerifyOTP усецase-ууд тэр
 // даруй амжилтгүй буцах тул operator-д тохиргооны цоорхойг ил болгоно.
-func NewUsecase(usersUC users.Usecase, jwtService jwt.JWTService, otpMailer mailer.OTPMailer, verifySender verify.Sender, redisCache caches.RedisCache, cfg Config) Usecase {
+func NewUsecase(usersUC users.Usecase, jwtService jwt.JWTService, otpMailer mailer.OTPMailer, verifySender verify.Sender, redisCache ports.Cache, cfg Config) Usecase {
 	cost := cfg.BcryptCost
 	if cost < bcrypt.MinCost || cost > bcrypt.MaxCost {
 		cost = bcrypt.DefaultCost
