@@ -218,7 +218,11 @@ func (j *jwtService) ParseRefreshToken(tokenString string) (JwtCustomClaim, erro
 func (j *jwtService) parse(tokenString string) (JwtCustomClaim, error) {
 	var claims JwtCustomClaim
 	token, err := golangJWT.ParseWithClaims(tokenString, &claims, func(token *golangJWT.Token) (interface{}, error) {
-		if _, ok := token.Method.(*golangJWT.SigningMethodHMAC); !ok {
+		// Issue HS256 only (line 180). Pin verify to HS256 exactly so an
+		// attacker cannot downgrade/upgrade the algorithm header to fool
+		// the parser into reading the same shared secret as a different
+		// HMAC variant or another key shape.
+		if token.Method.Alg() != golangJWT.SigningMethodHS256.Alg() {
 			alg := token.Header["alg"]
 			logger.Warn("jwt: unexpected signing method", logger.Fields{
 				"package": "jwt",

@@ -72,6 +72,13 @@ type Config struct {
 	VerifyAPIBase string `mapstructure:"VERIFY_API_BASE"`
 	VerifyAPIKey  string `mapstructure:"VERIFY_API_KEY"`
 	VerifyChannel string `mapstructure:"VERIFY_CHANNEL"`
+
+	// ObservabilityToken нь production-д /metrics ба /swagger/doc.json
+	// endpoint-уудыг хамгаалах Bearer токен юм. Хоосон үед production-д
+	// эдгээр endpoint 404 буцаана; development-д тэр чигээрээ нээлттэй.
+	// Prometheus scraper эсвэл developer Postman үүнийг "Authorization:
+	// Bearer <token>" толгойгоор дамжуулна.
+	ObservabilityToken string `mapstructure:"OBSERVABILITY_TOKEN"`
 }
 
 // TrustedProxiesList нь TRUSTED_PROXIES-г таслалаар тусгаарлан, цэвэрлэсэн
@@ -189,10 +196,72 @@ func InitializeAppConfig() error {
 		if AppConfig.AllowedOrigins == "" {
 			return fmt.Errorf("ALLOWED_ORIGINS must be set in production (comma-separated origins)")
 		}
+		if err := validateOrigins(AppConfig.AllowedOriginsList()); err != nil {
+			return err
+		}
+		// .env.example-ийн CHANGE_ME placeholder-ууд validation-ийг
+		// (length, type) дамжих учир operator санамсаргүй deploy хийвэл
+		// "secret" нь жинхэнэ нийтэд мэдэгдэх утга үлдэх эрсдэлтэй.
+		// Production-д ийм placeholder-уудыг хатуу татгалзана.
+		if err := rejectPlaceholderSecrets(); err != nil {
+			return err
+		}
 	default:
 		return fmt.Errorf("ENVIRONMENT must be 'development' or 'production', got %q", AppConfig.Environment)
 	}
 
+	return nil
+}
+
+// validateOrigins нь ALLOWED_ORIGINS-ын элемент бүрийг scheme://host
+// бүхий зөв origin URL мөн эсэхийг шалгана. Production-д wildcard "*"
+// эсвэл буруу бичсэн утга нь CORS-ыг чимээгүйгээр сулруулдаг тул
+// startup үед шууд унагана.
+func validateOrigins(origins []string) error {
+	for _, o := range origins {
+		if o == "*" {
+			return fmt.Errorf("ALLOWED_ORIGINS must not contain wildcard '*' in production")
+		}
+		u, err := url.Parse(o)
+		if err != nil {
+			return fmt.Errorf("ALLOWED_ORIGINS contains invalid origin %q: %w", o, err)
+		}
+		if u.Scheme != "http" && u.Scheme != "https" {
+			return fmt.Errorf("ALLOWED_ORIGINS %q must use http(s) scheme (got %q)", o, u.Scheme)
+		}
+		if u.Host == "" {
+			return fmt.Errorf("ALLOWED_ORIGINS %q must include a host", o)
+		}
+		if u.Path != "" && u.Path != "/" {
+			return fmt.Errorf("ALLOWED_ORIGINS %q must not include a path (got %q)", o, u.Path)
+		}
+	}
+	return nil
+}
+
+// rejectPlaceholderSecrets нь .env.example-ийн CHANGE_ME ба түүнтэй
+// төстэй placeholder-уудыг production-д хүлээн авахаас сэргийлнэ.
+// Length check (≥32 байт) эдгээрийг чимээгүй давдаг учир тусдаа guard
+// хэрэгтэй. Substring шалгах нь шалтай боловч default placeholder-ыг
+// тогтворгүй үлдээхээс илүү — оператор санаатай "CHANGE" гэдэг үг
+// орсон жинхэнэ секретээр ажиллахыг хүсвэл нэр өөрчилнө.
+func rejectPlaceholderSecrets() error {
+	type check struct{ name, val string }
+	checks := []check{
+		{"JWT_SECRET", AppConfig.JWTSecret},
+		{"REDIS_PASS", AppConfig.REDISPassword},
+		{"VERIFY_API_KEY", AppConfig.VerifyAPIKey},
+		{"OTP_PASSWORD", AppConfig.OTPPassword},
+	}
+	bad := []string{"CHANGE_ME", "CHANGEME", "PLACEHOLDER", "REPLACE_ME", "TODO_SECRET"}
+	for _, c := range checks {
+		upper := strings.ToUpper(c.val)
+		for _, needle := range bad {
+			if strings.Contains(upper, needle) {
+				return fmt.Errorf("%s contains placeholder %q — generate a real secret (e.g. `openssl rand -base64 32`) before deploying", c.name, needle)
+			}
+		}
+	}
 	return nil
 }
 

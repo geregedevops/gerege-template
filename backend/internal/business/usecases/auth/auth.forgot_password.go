@@ -129,8 +129,22 @@ func (uc *usecase) ForgotPassword(ctx context.Context, req ForgotPasswordRequest
 	// Алдагдсан өмнөх холбоос шинэтэй нь өрсөлдөхгүйн тулд энэ хэрэглэгчид
 	// одоо ч амьд байгаа аливаа токеныг хүчингүй болго. "Би reset-ийг хоёр
 	// удаа хүссэн" гэдэгт хүлээгдэх сэтгэцийн загвар нь нэг идэвхтэй токен юм.
+	// Хэрэв хуучин токеныг арилгаж чадахгүй бол шинэ токеныг олгохоос
+	// татгалзана — өөрөөр бол хоёр reset зэрэг хүчинтэй үлдэх эрсдэлтэй
+	// (TOCTOU-аар халдагч хуучин токеноор password дарж болзошгүй).
 	if prior, getErr := uc.redisCache.Get(ctx, UserResetIndexKey(user.ID)); getErr == nil && prior != "" {
-		_ = uc.redisCache.Del(ctx, PasswordResetKey(prior))
+		if delErr := uc.redisCache.Del(ctx, PasswordResetKey(prior)); delErr != nil {
+			err = apperror.InternalCause(fmt.Errorf("invalidate prior reset token: %w", delErr))
+			logger.ErrorWithContext(ctx, "Forgot password failed: prior token cleanup error", logger.Fields{
+				"usecase": usecaseName,
+				"method":  funcName,
+				"file":    fileName,
+				"step":    "redis_del_prior_token",
+				"error":   delErr.Error(),
+				"user_id": user.ID,
+			})
+			return err
+		}
 	}
 
 	// Атомар SET ... EX <PasswordResetTTL> — Set + Expire-ийн оронд. Урьд нь
