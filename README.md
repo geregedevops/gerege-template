@@ -48,14 +48,29 @@ gerege-template/
 
 **Prerequisites:** Go 1.26+, Node 20+, PostgreSQL 15+, Redis 7+.
 
+### 0) Rename the Go module (one-time)
+
+The template ships under the placeholder module path `templatev27`. Replace it
+with your own module path before doing anything else — every Go file imports
+`templatev27/...`, so renaming early avoids a sed sweep later.
+
 ```bash
-# 1) Backend  →  http://localhost:8080
+./scripts/rename-module.sh github.com/myorg/my-api
+cd backend && go mod tidy && cd ..
+```
+
+### 1) Backend → http://localhost:8080
+
+```bash
 cd backend
 cp internal/config/.env.example internal/config/.env   # set JWT_SECRET (≥32 chars), DB, Redis
 make mig-up        # create schema
 make serve
+```
 
-# 2) Frontend →  http://localhost:3000
+### 2) Frontend → http://localhost:3000
+
+```bash
 cd ../frontend
 cp .env.example .env.local                              # BACKEND_URL=http://localhost:8080
 npm install

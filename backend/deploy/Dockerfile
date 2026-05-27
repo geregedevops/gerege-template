@@ -6,7 +6,7 @@
 # platform.
 
 # ---------- builder ----------
-FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26.0-alpine3.20 AS builder
 
 RUN apk add --no-cache git ca-certificates
 
